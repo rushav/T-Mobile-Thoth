@@ -11,6 +11,7 @@ class ProfileCreate(BaseModel):
     name: str
     role: str  # user | sme | admin
     expertise_area: str | None = None
+    contact_info: str | None = None
     subject_ids: list[int] | None = None
 
 
@@ -19,7 +20,10 @@ class ProfileOut(BaseModel):
     name: str
     role: str
     expertise_area: str | None = None
+    contact_info: str | None = None
     subject_ids: list[int] = []
+    review_requested_at: str | None = None
+    review_request_message: str | None = None
 
     class Config:
         from_attributes = True
@@ -31,7 +35,10 @@ def _serialize(p: models.Profile) -> ProfileOut:
         name=p.name,
         role=p.role,
         expertise_area=p.expertise_area,
+        contact_info=p.contact_info,
         subject_ids=[s.id for s in p.subjects],
+        review_requested_at=p.review_requested_at.isoformat() if p.review_requested_at else None,
+        review_request_message=p.review_request_message,
     )
 
 
@@ -43,6 +50,7 @@ def create_profile(payload: ProfileCreate, db: Session = Depends(get_db)):
         name=payload.name.strip(),
         role=payload.role,
         expertise_area=payload.expertise_area,
+        contact_info=payload.contact_info,
     )
     db.add(p)
     db.flush()
@@ -81,4 +89,28 @@ def get_profile(profile_id: int, db: Session = Depends(get_db)):
     p = db.query(models.Profile).filter(models.Profile.id == profile_id).first()
     if not p:
         raise HTTPException(status_code=404, detail="Profile not found")
+    return _serialize(p)
+
+
+@router.get("/{profile_id}/subjects")
+def list_profile_subjects(profile_id: int, db: Session = Depends(get_db)):
+    p = db.query(models.Profile).filter(models.Profile.id == profile_id).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    return [
+        {"id": s.id, "name": s.name, "description": s.description}
+        for s in p.subjects
+    ]
+
+
+@router.post("/{profile_id}/clear-review-request", response_model=ProfileOut)
+def clear_review_request(profile_id: int, db: Session = Depends(get_db)):
+    p = db.query(models.Profile).filter(models.Profile.id == profile_id).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    p.review_requested_at = None
+    p.review_requested_by_id = None
+    p.review_request_message = None
+    db.commit()
+    db.refresh(p)
     return _serialize(p)

@@ -20,10 +20,15 @@ class Profile(Base):
     name = Column(String, nullable=False)
     role = Column(String, nullable=False)  # user | sme | admin
     expertise_area = Column(String, nullable=True)
+    contact_info = Column(String, nullable=True)
+    review_requested_at = Column(DateTime, nullable=True)
+    review_requested_by_id = Column(Integer, ForeignKey("profiles.id"), nullable=True)
+    review_request_message = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     subjects = relationship("Subject", secondary=sme_subjects, back_populates="smes")
     contributions = relationship("KnowledgeEntry", back_populates="contributor", foreign_keys="KnowledgeEntry.contributor_id")
+    review_requested_by = relationship("Profile", remote_side=[id], foreign_keys=[review_requested_by_id])
 
 
 class Subject(Base):
@@ -44,7 +49,9 @@ class KnowledgeEntry(Base):
     contributor_id = Column(Integer, ForeignKey("profiles.id"), nullable=True)
     title = Column(String, nullable=False)
     content = Column(Text, nullable=False)
-    status = Column(String, default="pending")  # pending | approved | rejected
+    # Lifecycle: pending | pending_admin_review | approved | rejected
+    status = Column(String, default="pending")
+    rejection_reason = Column(Text, nullable=True)
     approved_by = Column(Integer, ForeignKey("profiles.id"), nullable=True)
     approved_at = Column(DateTime, nullable=True)
     review_date = Column(DateTime, nullable=True)
@@ -75,6 +82,7 @@ class Interview(Base):
     id = Column(Integer, primary_key=True)
     sme_id = Column(Integer, ForeignKey("profiles.id"), nullable=False)
     subject_id = Column(Integer, ForeignKey("subjects.id"), nullable=False)
+    mode = Column(String, default="structured")  # structured | freeform
     messages = Column(JSON, default=list)
     synthesis = Column(Text, nullable=True)
     synthesis_status = Column(String, default="draft")  # draft | pending_review | approved | rejected
@@ -92,9 +100,11 @@ class Escalation(Base):
     user_query = Column(Text, nullable=False)
     user_id = Column(Integer, ForeignKey("profiles.id"), nullable=True)
     reason = Column(Text, nullable=True)
+    candidates = Column(JSON, default=list)  # [{subject, confidence}]
     status = Column(String, default="open")  # open | assigned | resolved
     assigned_to = Column(Integer, ForeignKey("profiles.id"), nullable=True)
     resolution = Column(Text, nullable=True)
+    resolved_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("Profile", foreign_keys=[user_id])

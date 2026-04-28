@@ -1,20 +1,41 @@
 const BASE = ''  // Vite proxy forwards /api to :8000
 
-function profileHeaders() {
-  const p = currentProfile()
-  return p ? { 'X-Profile-Id': String(p.id) } : {}
+const ROLE_FROM_PATH = [
+  ['/user', 'user'],
+  ['/sme', 'sme'],
+  ['/admin', 'admin'],
+  ['/support', 'support'],
+]
+
+export function currentRole() {
+  const path = (typeof window !== 'undefined' ? window.location.pathname : '') || ''
+  for (const [prefix, role] of ROLE_FROM_PATH) {
+    if (path === prefix || path.startsWith(prefix + '/')) return role
+  }
+  return null
 }
 
-export function currentProfile() {
+function profileKey(role) {
+  return `thoth.profile.${role}`
+}
+
+export function currentProfile(role = currentRole()) {
+  if (!role) return null
   try {
-    const raw = localStorage.getItem('thoth.profile')
+    const raw = localStorage.getItem(profileKey(role))
     return raw ? JSON.parse(raw) : null
   } catch { return null }
 }
 
-export function setProfile(p) {
-  if (p) localStorage.setItem('thoth.profile', JSON.stringify(p))
-  else localStorage.removeItem('thoth.profile')
+export function setProfile(role, p) {
+  if (!role) return
+  if (p) localStorage.setItem(profileKey(role), JSON.stringify(p))
+  else localStorage.removeItem(profileKey(role))
+}
+
+function profileHeaders() {
+  const p = currentProfile()
+  return p ? { 'X-Profile-Id': String(p.id) } : {}
 }
 
 async function handle(res) {
@@ -50,31 +71,54 @@ export async function apiUpload(path, formData) {
   return handle(res)
 }
 
-// Domain helpers
+// Profiles
 export const listProfiles = (role) => apiGet(`/api/profiles${role ? `?role=${role}` : ''}`)
+export const getProfile = (id) => apiGet(`/api/profiles/${id}`)
+export const getProfileSubjects = (id) => apiGet(`/api/profiles/${id}/subjects`)
 export const createProfile = (payload) => apiPost('/api/profiles', payload)
-export const login = (profile_id) => apiPost('/api/profiles/login', { profile_id })
+export const clearReviewRequest = (id) => apiPost(`/api/profiles/${id}/clear-review-request`)
 
+// Subjects
 export const listSubjects = () => apiGet('/api/subjects')
+export const createSubject = (payload) => apiPost('/api/subjects', payload)
+
+// Query
 export const query = (question) => apiPost('/api/query', { question })
 export const queryHistory = () => apiGet('/api/query/history')
+export function queryWithFile(question, file) {
+  const fd = new FormData()
+  fd.append('question', question)
+  fd.append('file', file)
+  return apiUpload('/api/query/with-file', fd)
+}
 
-export const startInterview = (sme_id, subject_id) => apiPost('/api/interviews/start', { sme_id, subject_id })
+// Interviews
+export const startInterview = (sme_id, subject_id, mode = 'structured') =>
+  apiPost('/api/interviews/start', { sme_id, subject_id, mode })
 export const sendInterviewMessage = (id, content) => apiPost(`/api/interviews/${id}/message`, { content })
 export const synthesizeInterview = (id) => apiPost(`/api/interviews/${id}/synthesize`)
 export const reviewInterview = (id, action, feedback) => apiPost(`/api/interviews/${id}/review`, { action, feedback })
 export const getInterview = (id) => apiGet(`/api/interviews/${id}`)
+export const listInterviews = (sme_id) => apiGet(`/api/interviews${sme_id != null ? `?sme_id=${sme_id}` : ''}`)
 
+// SME Review
 export const pendingForSme = (sme_id) => apiGet(`/api/review/pending?sme_id=${sme_id}`)
-export const reviewEntry = (entry_id, action, reviewer_id) => apiPost(`/api/review/${entry_id}`, { action, reviewer_id })
+export const reviewEntry = (entry_id, action, reviewer_id, feedback) =>
+  apiPost(`/api/review/${entry_id}`, { action, reviewer_id, feedback })
 
+// Admin
 export const adminPending = () => apiGet('/api/admin/pending')
 export const adminApprove = (entry_id, approver_id) => apiPost(`/api/admin/approve/${entry_id}`, { approver_id })
-export const adminReject = (entry_id) => apiPost(`/api/admin/reject/${entry_id}`)
-export const adminEscalations = () => apiGet('/api/admin/escalations')
-export const adminResolveEscalation = (id, resolution, admin_id) => apiPost(`/api/admin/escalations/${id}/resolve`, { resolution, admin_id })
+export const adminReject = (entry_id, reason) => apiPost(`/api/admin/reject/${entry_id}`, { reason })
+export const adminEscalations = (status) => apiGet(`/api/admin/escalations${status ? `?status=${status}` : ''}`)
+export const adminGetEscalation = (id) => apiGet(`/api/admin/escalations/${id}`)
+export const adminResolveEscalation = (id, resolution, admin_id) =>
+  apiPost(`/api/admin/escalations/${id}/resolve`, { resolution, admin_id })
 export const adminDirectory = () => apiGet('/api/admin/directory')
+export const adminRequestReview = (sme_id, admin_id, message) =>
+  apiPost('/api/admin/request-review', { sme_id, admin_id, message })
 
+// Files (SME-side, attached to interviews)
 export function uploadFile(file, { interview_id, entry_id } = {}) {
   const fd = new FormData()
   fd.append('file', file)

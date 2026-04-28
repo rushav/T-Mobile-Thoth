@@ -1,30 +1,57 @@
 from llm import chat
-from agents.prompts import INTERVIEWER_PROMPT, SYNTHESIS_PROMPT
+from agents.prompts import (
+    INTERVIEWER_PROMPT_STRUCTURED,
+    INTERVIEWER_PROMPT_FREEFORM,
+    SYNTHESIS_PROMPT,
+    REVISION_PROMPT,
+)
 
 
-def next_message(sme_name: str, subject_name: str, messages: list[dict]) -> str:
-    """Given conversation history, produce Thoth's next interviewer message.
+def _interviewer_system_prompt(sme_name: str, subject_name: str, mode: str) -> str:
+    template = INTERVIEWER_PROMPT_FREEFORM if mode == "freeform" else INTERVIEWER_PROMPT_STRUCTURED
+    return template.format(sme_name=sme_name, subject_name=subject_name)
 
-    `messages` is the conversation from the SME's perspective (SME is the 'user'
-    in the turn structure), but if the list is empty we prompt Thoth to open.
-    """
-    system = INTERVIEWER_PROMPT.format(sme_name=sme_name, subject_name=subject_name)
+
+def next_message(sme_name: str, subject_name: str, messages: list[dict], mode: str = "structured") -> str:
+    """Given conversation history, produce Thoth's next interviewer message."""
+    system = _interviewer_system_prompt(sme_name, subject_name, mode)
     api_messages = [{"role": m["role"], "content": m["content"]} for m in messages]
     if not api_messages:
-        # Kick off — ask Thoth to start the interview.
         api_messages = [{"role": "user", "content": "Please begin the interview."}]
-    return chat(system=system, messages=api_messages, max_tokens=600, temperature=0.7)
+    return chat(system=system, messages=api_messages, max_tokens=600, temperature=0.6)
 
 
-def synthesize(sme_name: str, subject_name: str, transcript: str, uploaded_text: str) -> str:
+def synthesize(sme_name: str, subject_name: str, transcript: str, uploaded_text: str, mode: str = "structured") -> str:
     prompt = SYNTHESIS_PROMPT.format(
         sme_name=sme_name,
         subject_name=subject_name,
         interview_transcript=transcript,
         uploaded_file_contents=uploaded_text or "(none)",
+        mode=mode,
     )
-    return chat(system="", messages=[{"role": "user", "content": prompt}],
-                max_tokens=1500, temperature=0.3)
+    return chat(
+        system="",
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=1500,
+        temperature=0.2,
+    )
+
+
+def revise(sme_name: str, subject_name: str, transcript: str, uploaded_text: str,
+           previous_synthesis: str, feedback: str) -> str:
+    """Re-generate the synthesis given SME feedback. Stays grounded in transcript."""
+    prompt = REVISION_PROMPT.format(
+        feedback=feedback or "(no specific feedback — re-synthesize to be more accurate)",
+        interview_transcript=transcript,
+        uploaded_file_contents=uploaded_text or "(none)",
+        previous_synthesis=previous_synthesis or "(none)",
+    )
+    return chat(
+        system="",
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=1500,
+        temperature=0.2,
+    )
 
 
 def transcript_from_messages(messages: list[dict]) -> str:

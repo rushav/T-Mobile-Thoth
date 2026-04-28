@@ -1,7 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import MessageBubble from './MessageBubble'
 
-export default function ChatWindow({ messages, onSend, placeholder = 'Type your message…', disabled, busy }) {
+export default function ChatWindow({
+  messages,
+  onSend,
+  placeholder = 'Type your message…',
+  disabled,
+  busy,
+  composerExtras,
+  composerAbove,
+}) {
   const [text, setText] = useState('')
   const scrollRef = useRef(null)
 
@@ -30,23 +38,27 @@ export default function ChatWindow({ messages, onSend, placeholder = 'Type your 
           <div className="text-xs text-slate-500 italic mt-2">Thoth is thinking…</div>
         )}
       </div>
-      <form onSubmit={submit} className="flex items-center gap-2 border-t bg-white p-3">
-        <input
-          type="text"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder={placeholder}
-          disabled={disabled || busy}
-          className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100"
-        />
-        <button
-          type="submit"
-          disabled={disabled || busy || !text.trim()}
-          className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:bg-slate-300"
-        >
-          Send
-        </button>
-      </form>
+      <div className="border-t bg-white">
+        {composerAbove}
+        <form onSubmit={submit} className="flex items-center gap-2 p-3">
+          {composerExtras}
+          <input
+            type="text"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder={placeholder}
+            disabled={disabled || busy}
+            className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100"
+          />
+          <button
+            type="submit"
+            disabled={disabled || busy || !text.trim()}
+            className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:bg-slate-300"
+          >
+            Send
+          </button>
+        </form>
+      </div>
     </div>
   )
 }

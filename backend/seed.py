@@ -21,14 +21,15 @@ SUBJECTS = [
     ("Cars", "Vehicle maintenance, buying advice, common repairs"),
 ]
 
+# (name, subject, expertise area, contact info)
 SMES = [
-    ("Lisa Li", "Coffee", "Coffee brewing & beans"),
-    ("Mengting Li", "Milk Tea", "Boba & tea preparation"),
-    ("Rushav", "Cars", "Vehicle maintenance & buying"),
+    ("Lisa Li", "Coffee", "Brewing Methods", "lisa.li@gix.edu"),
+    ("Mengting Li", "Milk Tea", "Boba & Tea Bases", "mengting.li@gix.edu"),
+    ("Rushav", "Cars", "Maintenance & Buying", "rushav@gix.edu"),
 ]
 
 USERS = ["Alex Rivera", "Jordan Lee"]
-ADMINS = ["Pat Morgan"]
+ADMINS = [("Pat Morgan", "pat.morgan@gix.edu")]
 
 
 KNOWLEDGE = {
@@ -203,13 +204,18 @@ def main():
 
         # SMEs
         sme_map: dict[str, models.Profile] = {}
-        for name, subject_name, expertise in SMES:
-            p = models.Profile(name=name, role="sme", expertise_area=expertise)
+        for name, subject_name, expertise, contact in SMES:
+            p = models.Profile(
+                name=name,
+                role="sme",
+                expertise_area=expertise,
+                contact_info=contact,
+            )
             p.subjects = [subject_map[subject_name]]
             db.add(p)
             db.flush()
             sme_map[name] = p
-            print(f"[seed] + SME: {name} ({subject_name})")
+            print(f"[seed] + SME: {name} — {subject_name} ({expertise})")
 
         # Users
         for name in USERS:
@@ -217,8 +223,8 @@ def main():
             print(f"[seed] + user: {name}")
 
         # Admins
-        for name in ADMINS:
-            db.add(models.Profile(name=name, role="admin"))
+        for name, contact in ADMINS:
+            db.add(models.Profile(name=name, role="admin", contact_info=contact))
             print(f"[seed] + admin: {name}")
 
         db.commit()
@@ -227,7 +233,7 @@ def main():
         for subject_name, entries in KNOWLEDGE.items():
             subject = subject_map[subject_name]
             contributor = next(
-                (sme for sme_name, s_name, _ in SMES if s_name == subject_name for sme in [sme_map[sme_name]]),
+                (sme for sme_name, s_name, _, _ in SMES if s_name == subject_name for sme in [sme_map[sme_name]]),
                 None,
             )
             for title, content in entries:

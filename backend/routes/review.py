@@ -46,14 +46,16 @@ def pending_for_sme(sme_id: int, db: Session = Depends(get_db)):
 class ReviewAction(BaseModel):
     action: str  # approve | reject
     reviewer_id: int | None = None
+    feedback: str | None = None
 
 
 @router.post("/{entry_id}")
 def review_entry(entry_id: int, payload: ReviewAction, db: Session = Depends(get_db)):
+    """SME-level review: approve forwards to admin queue, reject closes the entry."""
     if payload.action == "approve":
-        entry = knowledge_svc.approve_entry(db, entry_id, approver_id=payload.reviewer_id)
+        entry = knowledge_svc.submit_for_admin_review(db, entry_id, sme_id=payload.reviewer_id)
         return {"status": entry.status, "entry_id": entry.id}
     if payload.action == "reject":
-        entry = knowledge_svc.reject_entry(db, entry_id)
+        entry = knowledge_svc.reject_entry(db, entry_id, reason=payload.feedback)
         return {"status": entry.status, "entry_id": entry.id}
     raise HTTPException(status_code=400, detail="action must be approve or reject")

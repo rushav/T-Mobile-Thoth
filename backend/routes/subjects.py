@@ -10,6 +10,8 @@ router = APIRouter(prefix="/api/subjects", tags=["subjects"])
 class SubjectCreate(BaseModel):
     name: str
     description: str | None = None
+    sme_id: int | None = None
+    expertise: str | None = None
 
 
 class SubjectOut(BaseModel):
@@ -28,11 +30,28 @@ def list_subjects(db: Session = Depends(get_db)):
 
 @router.post("", response_model=SubjectOut)
 def create_subject(payload: SubjectCreate, db: Session = Depends(get_db)):
-    existing = db.query(models.Subject).filter(models.Subject.name == payload.name).first()
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Subject name is required")
+    existing = db.query(models.Subject).filter(models.Subject.name == name).first()
     if existing:
         raise HTTPException(status_code=400, detail="Subject with that name already exists")
-    s = models.Subject(name=payload.name.strip(), description=payload.description)
+    s = models.Subject(name=name, description=payload.description)
     db.add(s)
+    db.flush()
+
+    if payload.sme_id is not None:
+        sme = db.query(models.Profile).filter(
+            models.Profile.id == payload.sme_id, models.Profile.role == "sme"
+        ).first()
+        if not sme:
+            raise HTTPException(status_code=404, detail="SME not found")
+        sme.subjects = list(sme.subjects) + [s]
+        # Capture the expertise scope on the SME profile so the directory and
+        # the SME agent prompt have something to display.
+        if payload.expertise and payload.expertise.strip():
+            sme.expertise_area = payload.expertise.strip()
+
     db.commit()
     db.refresh(s)
     return s

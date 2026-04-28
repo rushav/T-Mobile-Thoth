@@ -71,23 +71,33 @@ project-thoth/
 
 ## Database schema (SQLite)
 ```sql
-profiles (id, name, role [user|sme|admin], expertise_area, created_at)
+profiles (id, name, role [user|sme|admin], expertise_area, contact_info, created_at)
 subjects (id, name, description, created_at)
-sme_subjects (profile_id FK, subject_id FK)
+sme_subjects (profile_id FK, subject_id FK, expertise TEXT)
 knowledge_entries (id, subject_id FK, contributor_id FK, title, content,
-                   status [pending|approved|rejected], approved_by,
-                   approved_at, review_date, created_at)
+                   status [draft|pending_review|pending_admin_review|approved|rejected],
+                   approved_by, approved_at, review_date, review_requested BOOL,
+                   created_at)
 files (id, entry_id FK, filename, filepath, file_type, extracted_text, created_at)
 interviews (id, sme_id FK, subject_id FK, messages JSON,
             synthesis TEXT, synthesis_status [draft|pending_review|approved|rejected],
             created_at)
-escalations (id, user_query, user_id FK, reason, status [open|assigned|resolved],
-             assigned_to FK, resolution TEXT, created_at)
+escalations (id, user_query, user_id FK, reason, classifier_details JSON,
+             status [open|assigned|resolved], assigned_to FK,
+             resolution TEXT, resolved_at, created_at)
 ```
+
+## Approval flow (important — get this right)
+1. SME approves synthesis → status = "pending_admin_review"
+2. Entry appears in admin approval queue
+3. Admin approves → status = "approved", content added to ChromaDB
+4. Admin rejects → status = "rejected", SME notified
 
 ## Demo data (seeded by seed.py)
 - Subjects: Coffee, Milk Tea, Cars
-- SMEs: Lisa Li (Coffee), Mengting Li (Milk Tea), Rushav (Cars)
+- SMEs: Lisa Li — Coffee (Brewing Methods), lisa.li@gix.edu
+        Mengting Li — Milk Tea (Boba & Tea Bases), mengting.li@gix.edu
+        Rushav — Cars (Maintenance & Buying), rushav@gix.edu
 - Users: Alex Rivera, Jordan Lee
 - Admin: Pat Morgan
 - 2 approved knowledge entries per subject pre-loaded into ChromaDB
@@ -128,10 +138,17 @@ POST   /api/subjects              # Create new subject
 ## Key behaviors
 - NEVER let Thoth answer user questions directly. It classifies and routes only.
 - NEVER expose raw interview transcripts to users. Only approved summaries.
-- NOTHING enters the active knowledge base without explicit SME approval.
+- NOTHING enters the active knowledge base without BOTH SME approval AND admin approval.
 - Each ChromaDB collection is named `subject_{subject_id}` and is only queried by its own agent.
-- When no subject matches a question, escalate to admin — don't guess.
+- When no subject matches a question (confidence < 0.4), escalate to admin.
+- When question is ambiguous (0.4-0.7 confidence or multi-subject match), ask a clarifying question — do NOT escalate.
+- SMEs can ONLY see and interview for their own assigned subjects, never other SMEs' subjects.
+- Synthesis MUST only contain information the SME explicitly stated. NEVER add external knowledge or extrapolate.
+- Interview conversation history must persist — never clear it when generating or revising synthesis.
 - Store conversation history as JSON in the interviews table.
+- Render all LLM responses as markdown in the frontend (use react-markdown).
+- Escalations must store classifier details (subjects considered, confidence scores) for admin context.
+- Resolved escalations move to an archive, not deleted.
 
 ## Code style
 - Python: type hints, async where possible, Pydantic models for request/response
