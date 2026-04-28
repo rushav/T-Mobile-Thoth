@@ -3,71 +3,152 @@
 ## What this is
 An AI-powered SME knowledge capture and retrieval system for a GIX/T-Mobile hackathon. 2-week PoC due May 4, 2026. Two software devs (John, Rushav), two designers working separately in Figma.
 
+---
+
+## DEVELOPER WORKFLOW (READ THIS FIRST)
+
+This project has two developers. Each has their own README that tracks what they changed. Claude Code manages everything — the developer never manually edits changelogs.
+
+### Starting a session
+```
+1. git pull
+2. Open terminal in project root
+3. Run: claude
+4. First message to Claude Code every session:
+
+   "Read CLAUDE.md, PROMPTS.md, and both developer READMEs (RUSHAV_README.md and JOHN_README.md). 
+    I am [Rushav/John]. Check the other developer's changelog for any changes since my last session 
+    and tell me if anything affects my files. Then I'll tell you what to work on."
+```
+
+Claude Code will:
+- Read all context files
+- Check the other dev's changelog for new entries
+- Flag anything that touches shared files or integration points
+- Wait for your instructions
+
+### During a session
+Just tell Claude Code what to build, fix, or change. Work normally.
+
+### Ending a session
+Before you push, tell Claude Code:
+
+```
+"Update my README (RUSHAV_README.md / JOHN_README.md). Log every file I changed this session 
+ with today's date and a short description. Update the status checklist. If I changed any 
+ shared files, flag it clearly in the changelog entry."
+```
+
+Claude Code will:
+- Add dated changelog entries for everything that changed
+- Update the status checklist (check off completed items, add new in-progress items)
+- Flag shared file changes with a ⚠️ marker so the other dev sees it immediately
+- You review the update, then push
+
+### The full cycle
+```
+git pull                          # Get the other dev's latest changes
+claude                            # Start Claude Code
+"Read all files, I am Rushav"     # Claude reads context + flags changes
+... work on your stuff ...        # Claude builds/fixes things
+"Update my README"                # Claude logs what changed
+git add . && git commit && git push   # Push everything including updated README
+```
+
+### Rules
+- NEVER manually edit the other person's README
+- ALWAYS start a session by reading both READMEs
+- ALWAYS end a session by updating your own README
+- If you change a shared file, Claude Code will mark it with ⚠️ in your changelog
+- If the other dev's changelog has a ⚠️ entry you haven't seen, resolve it before writing new code
+
+### Shared files (both devs edit — always coordinate)
+```
+backend/main.py               # Route registration
+backend/database.py            # SQLAlchemy engine + session
+backend/models.py              # DB models — schema changes affect everything
+backend/agents/prompts.py      # All LLM prompts
+frontend/src/App.jsx           # Route definitions
+frontend/src/api.js            # API endpoint functions
+```
+
+---
+
 ## Core architecture principle
 Thoth is the ORCHESTRATOR. It NEVER answers user questions directly. Subject-specific LLM agents (same base model, scoped RAG context) handle all user-facing answers. This prevents cross-contamination between knowledge domains.
 
 ## Tech stack
 - Backend: Python 3.11+, FastAPI, uvicorn
-- Frontend: React (Vite), Tailwind CSS — barebones functional UI only, designers handle polish later
-- Database: SQLite via SQLAlchemy (structured data: profiles, entries, approvals)
+- Frontend: React (Vite), Tailwind CSS — barebones functional UI only
+- Database: SQLite via SQLAlchemy (structured data)
 - Vector store: ChromaDB (RAG retrieval, one collection per subject)
 - LLM: Anthropic Claude API via `anthropic` Python SDK, model `claude-sonnet-4-20250514`
 - File parsing: PyPDF2, python-docx for uploaded files
-- Embeddings: ChromaDB default (all-MiniLM-L6-v2) or `sentence-transformers`
+- Embeddings: ChromaDB default (all-MiniLM-L6-v2)
 
 ## Project structure
 ```
 project-thoth/
-├── CLAUDE.md
+├── CLAUDE.md                   # This file — project brain, read every session
+├── PROMPTS.md                  # All LLM prompts reference
+├── RUSHAV_README.md            # Rushav's changelog + status + ownership
+├── JOHN_README.md              # John's changelog + status + ownership
+├── .env                        # ANTHROPIC_API_KEY (never commit this)
+├── .gitignore
 ├── backend/
-│   ├── main.py                 # FastAPI app, CORS, startup
+│   ├── main.py                 # FastAPI app, CORS, startup (SHARED)
 │   ├── config.py               # env vars, API keys
-│   ├── database.py             # SQLAlchemy setup, SQLite
-│   ├── models.py               # DB models (Profile, KnowledgeEntry, Subject, etc.)
-│   ├── vector_store.py         # ChromaDB setup, one collection per subject
-│   ├── seed.py                 # Demo data seeding script
+│   ├── database.py             # SQLAlchemy setup (SHARED)
+│   ├── models.py               # DB models (SHARED)
+│   ├── vector_store.py         # ChromaDB setup [JOHN]
+│   ├── seed.py                 # Demo data seeding [JOHN]
 │   ├── agents/
-│   │   ├── thoth.py            # Orchestrator: classifier + router
-│   │   ├── interviewer.py      # Conducts SME interviews, generates synthesis
-│   │   ├── sme_agent.py        # Subject-specific agent (scoped system prompt + RAG)
-│   │   └── prompts.py          # All system prompts in one place
+│   │   ├── thoth.py            # Orchestrator: classifier + router [RUSHAV]
+│   │   ├── interviewer.py      # SME interviews [JOHN]
+│   │   ├── sme_agent.py        # Subject-specific agents [RUSHAV]
+│   │   └── prompts.py          # All system prompts (SHARED)
 │   ├── routes/
-│   │   ├── profiles.py         # Create/list/select profiles (no auth)
-│   │   ├── interviews.py       # Start interview, send messages, get synthesis
-│   │   ├── review.py           # SME review/approve/reject synthesis
-│   │   ├── query.py            # User asks question → Thoth routes → agent answers
-│   │   ├── admin.py            # Approval queue, escalation inbox, SME directory
-│   │   └── files.py            # Upload PDF/text, parse, store
+│   │   ├── profiles.py         # Profile CRUD [RUSHAV]
+│   │   ├── interviews.py       # Interview flow [JOHN]
+│   │   ├── review.py           # SME review/approve/reject [JOHN]
+│   │   ├── query.py            # User query → route → answer [RUSHAV]
+│   │   ├── admin.py            # Admin tools [RUSHAV]
+│   │   ├── subjects.py         # Subject CRUD [JOHN]
+│   │   └── files.py            # File upload + parse [JOHN]
 │   ├── services/
-│   │   ├── knowledge.py        # CRUD for knowledge entries
-│   │   ├── file_parser.py      # Extract text from PDF/docx/txt
-│   │   └── classifier.py       # Classify question → subject
+│   │   ├── knowledge.py        # Knowledge entry CRUD [JOHN]
+│   │   ├── file_parser.py      # Text extraction [JOHN]
+│   │   └── classifier.py       # Question classifier [RUSHAV]
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/
-│   │   ├── App.jsx             # Router
-│   │   ├── api.js              # Fetch wrapper for backend
+│   │   ├── App.jsx             # Router (SHARED)
+│   │   ├── api.js              # Fetch wrapper (SHARED)
 │   │   ├── pages/
-│   │   │   ├── LoginPage.jsx       # Role picker + profile select
-│   │   │   ├── UserChatPage.jsx    # User asks questions
-│   │   │   ├── SMEDashboardPage.jsx # Interview + review dashboard
-│   │   │   └── AdminPage.jsx       # Approval queue + escalations
+│   │   │   ├── LandingPage.jsx     # Four-window launcher [RUSHAV]
+│   │   │   ├── UserChatPage.jsx    # User questions + file attach [RUSHAV]
+│   │   │   ├── SMEDashboardPage.jsx # Interview + reviews [JOHN]
+│   │   │   └── AdminPage.jsx       # Approvals + escalations [RUSHAV]
 │   │   └── components/
-│   │       ├── ChatWindow.jsx      # Reusable chat component
-│   │       ├── MessageBubble.jsx   # Single message with agent indicator
-│   │       ├── ReviewPanel.jsx     # Approve/reject synthesis
-│   │       └── SubjectBadge.jsx    # Shows which agent is active
+│   │       ├── ChatWindow.jsx      # Reusable chat [RUSHAV]
+│   │       ├── MessageBubble.jsx   # Message + markdown [RUSHAV]
+│   │       ├── ReviewPanel.jsx     # Approve/reject UI [JOHN]
+│   │       ├── FileUpload.jsx      # File attachment [JOHN]
+│   │       ├── InterviewChat.jsx   # Interview chat [JOHN]
+│   │       └── SubjectBadge.jsx    # Agent indicator [RUSHAV]
 │   ├── index.html
 │   ├── package.json
 │   └── vite.config.js
 ├── data/
 │   ├── chroma/                 # ChromaDB persistent storage
 │   └── uploads/                # User-uploaded files
-├── .env                        # ANTHROPIC_API_KEY
-├── PROMPTS.md                  # LLM prompt reference
-├── DEMO_SCRIPT.md              # Demo walkthrough for May 4
 └── README.md
 ```
+
+## File ownership key
+- `[RUSHAV]` — Rushav owns this file
+- `[JOHN]` — John owns this file  
+- `(SHARED)` — Both edit, always coordinate via changelogs
 
 ## Database schema (SQLite)
 ```sql
@@ -87,7 +168,7 @@ escalations (id, user_query, user_id FK, reason, classifier_details JSON,
              resolution TEXT, resolved_at, created_at)
 ```
 
-## Approval flow (important — get this right)
+## Approval flow
 1. SME approves synthesis → status = "pending_admin_review"
 2. Entry appears in admin approval queue
 3. Admin approves → status = "approved", content added to ChromaDB
@@ -95,66 +176,75 @@ escalations (id, user_query, user_id FK, reason, classifier_details JSON,
 
 ## Demo data (seeded by seed.py)
 - Subjects: Coffee, Milk Tea, Cars
-- SMEs: Lisa Li — Coffee (Brewing Methods), lisa.li@gix.edu
-        Mengting Li — Milk Tea (Boba & Tea Bases), mengting.li@gix.edu
-        Rushav — Cars (Maintenance & Buying), rushav@gix.edu
+- SMEs: Lisa Li — Coffee (Brewing Methods), Mengting Li — Milk Tea (Boba & Tea Bases), Rushav — Cars (Maintenance & Buying)
 - Users: Alex Rivera, Jordan Lee
 - Admin: Pat Morgan
 - 2 approved knowledge entries per subject pre-loaded into ChromaDB
-- Test: John Huang will be added live as a new SME for "Climbing" during demo
+- Live demo: John Huang added as new SME for "Climbing"
 
-## How the LLM agents work
-Each subject gets its own agent. They are NOT separate models. They use the same Claude API with:
-1. A scoped system prompt: "You are the {subject} knowledge agent. Only answer from {subject} knowledge."
-2. Scoped RAG retrieval: query only the ChromaDB collection for that subject
-3. If the agent can't answer confidently, it returns a low-confidence signal to Thoth
+## Integration contract (NEVER change without telling the other dev)
+```python
+# Knowledge entry statuses
+STATUSES = ["draft", "pending_review", "pending_admin_review", "approved", "rejected"]
 
-Thoth's classifier prompt: "Given these subjects: [{list}], which best matches: '{user_question}'? Return JSON: {subject, confidence}"
+# ChromaDB collection naming
+COLLECTION_NAME = f"subject_{subject_id}"
 
-## API endpoints
-```
-POST   /api/profiles              # Create profile
-GET    /api/profiles?role=sme     # List profiles by role
-POST   /api/profiles/login        # Select profile (sets session)
+# ChromaDB document format
+{
+    "documents": [entry.content],
+    "metadatas": [{"entry_id": entry.id, "subject_id": entry.subject_id, "title": entry.title}],
+    "ids": [f"entry_{entry.id}"]
+}
 
-POST   /api/interviews/start      # Start interview session (sme_id, subject)
-POST   /api/interviews/{id}/message  # Send message in interview
-POST   /api/interviews/{id}/synthesize  # Generate synthesis
-POST   /api/interviews/{id}/review     # SME approve/reject/request-changes
-
-POST   /api/query                 # User asks question → Thoth routes → agent answers
-GET    /api/query/history         # Past questions for current user
-
-GET    /api/admin/pending         # Pending approvals
-POST   /api/admin/approve/{id}    # Approve entry
-GET    /api/admin/escalations     # Escalated questions
-GET    /api/admin/directory       # SME directory by subject
-
-POST   /api/files/upload          # Upload file, parse, link to entry
-GET    /api/subjects              # List all subjects
-POST   /api/subjects              # Create new subject
+# Profile response format
+{"id": int, "name": str, "role": str, "expertise_area": str|None, "contact_info": str|None}
 ```
 
 ## Key behaviors
 - NEVER let Thoth answer user questions directly. It classifies and routes only.
 - NEVER expose raw interview transcripts to users. Only approved summaries.
 - NOTHING enters the active knowledge base without BOTH SME approval AND admin approval.
-- Each ChromaDB collection is named `subject_{subject_id}` and is only queried by its own agent.
-- When no subject matches a question (confidence < 0.4), escalate to admin.
-- When question is ambiguous (0.4-0.7 confidence or multi-subject match), ask a clarifying question — do NOT escalate.
-- SMEs can ONLY see and interview for their own assigned subjects, never other SMEs' subjects.
-- Synthesis MUST only contain information the SME explicitly stated. NEVER add external knowledge or extrapolate.
-- Interview conversation history must persist — never clear it when generating or revising synthesis.
-- Store conversation history as JSON in the interviews table.
-- Render all LLM responses as markdown in the frontend (use react-markdown).
-- Escalations must store classifier details (subjects considered, confidence scores) for admin context.
-- Resolved escalations move to an archive, not deleted.
+- Each ChromaDB collection is named `subject_{subject_id}` and only queried by its own agent.
+- Confidence >= 0.7 → route to agent. 0.4-0.7 → clarifying question. < 0.4 → escalate.
+- SMEs only see their own subjects for interviews.
+- Synthesis MUST only contain information the SME explicitly stated.
+- Interview conversation history must persist — never clear it.
+- Render all LLM responses as markdown in the frontend (react-markdown).
+- Escalations store classifier details for admin context. Resolved ones go to archive.
+
+## How LLM agents work
+Same base model, scoped system prompt + scoped RAG retrieval per subject. NOT separate models. Classifier prompt determines routing. See PROMPTS.md for all prompt text.
+
+## API endpoints
+```
+POST   /api/profiles              # Create profile [RUSHAV]
+GET    /api/profiles?role=sme     # List by role [RUSHAV]
+
+POST   /api/interviews/start      # Start interview [JOHN]
+POST   /api/interviews/{id}/message  # Interview message [JOHN]
+POST   /api/interviews/{id}/synthesize  # Generate synthesis [JOHN]
+POST   /api/interviews/{id}/review     # SME review [JOHN]
+
+POST   /api/query                 # User question [RUSHAV]
+POST   /api/query/with-file       # User question + file [RUSHAV]
+GET    /api/query/history         # Past questions [RUSHAV]
+
+GET    /api/admin/pending         # Approval queue [RUSHAV]
+POST   /api/admin/approve/{id}    # Approve entry [RUSHAV]
+GET    /api/admin/escalations     # Escalation inbox [RUSHAV]
+GET    /api/admin/directory       # SME directory [RUSHAV]
+POST   /api/admin/request-review/{sme_id}  # Trigger review [RUSHAV]
+
+POST   /api/files/upload          # Upload file [JOHN]
+GET    /api/subjects              # List subjects [JOHN]
+POST   /api/subjects              # Create subject [JOHN]
+```
 
 ## Code style
 - Python: type hints, async where possible, Pydantic models for request/response
-- React: functional components, hooks, minimal state management (useState/useContext)
-- No class components, no Redux
-- Use fetch() for API calls, not axios
+- React: functional components, hooks, useState/useContext only
+- No class components, no Redux, no axios
 - Error handling: try/except in Python, .catch() in JS
 - Environment variables via python-dotenv, never hardcode API keys
 
@@ -168,12 +258,21 @@ uvicorn main:app --reload --port 8000
 # Frontend
 cd frontend && npm install
 npm run dev                       # Runs on port 5173
+
+# Reset everything
+rm data/thoth.db && rm -rf data/chroma/ && cd backend && python seed.py
 ```
 
+## Frontend architecture
+- Four separate windows via routes: /user, /sme, /admin, /support
+- Landing page at / opens each in a new browser tab
+- Each window has a colored header + profile selector dropdown for its role
+- Polling every 5 seconds for admin and SME windows to see cross-window updates
+- No WebSockets, no login/logout — role is determined by the route
+
 ## What NOT to build
-- No real authentication (just name-based profiles)
-- No WebSocket real-time chat (use polling or simple request/response)
-- No production deployment config
+- No real authentication
+- No WebSocket real-time chat
+- No production deployment
 - No CI/CD
-- No comprehensive error pages
-- No mobile responsiveness (desktop demo only)
+- No mobile responsiveness
