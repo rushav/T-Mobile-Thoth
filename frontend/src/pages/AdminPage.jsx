@@ -13,6 +13,9 @@ export default function AdminPage() {
   const [me, setMe] = useState(currentProfile('admin'))
   const [tab, setTab] = useState('queue')
 
+  // Distinct title so launch.sh's wmctrl pass can find this window
+  useEffect(() => { document.title = 'Thoth — Admin' }, [])
+
   return (
     <div className="flex flex-col h-full">
       <RoleHeader role="admin" onProfileChange={setMe} />

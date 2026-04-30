@@ -250,10 +250,15 @@ POST   /api/subjects              # Create subject [JOHN]
 
 ## Commands
 ```bash
-# Backend
+# First time setup (creates a venv at project root — required on Ubuntu 24+ / PEP 668)
+python3 -m venv .venv
+source .venv/bin/activate
 cd backend && pip install -r requirements.txt
 python seed.py                    # Seed demo data (run once)
-uvicorn main:app --reload --port 8000
+
+# Running (re-activate the venv each new shell)
+source .venv/bin/activate
+cd backend && uvicorn main:app --reload --port 8000
 
 # Frontend
 cd frontend && npm install

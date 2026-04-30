@@ -1,6 +1,10 @@
+import { useEffect } from 'react'
 import RoleHeader from '../components/RoleHeader'
 
 export default function SupportPage() {
+  // Distinct title so launch.sh's wmctrl pass can find this window
+  useEffect(() => { document.title = 'Thoth — Support' }, [])
+
   return (
     <div className="flex flex-col h-full">
       <RoleHeader role="support" />

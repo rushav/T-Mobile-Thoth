@@ -27,8 +27,8 @@ cp .env.example .env
 # 2. Backend — create venv + install deps + seed demo data
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r backend/requirements.txt
-cd backend && python seed.py && cd ..
+pip3 install -r backend/requirements.txt
+cd backend && python3 seed.py && cd ..
 
 # 3. Frontend — install deps
 cd frontend && npm install && cd ..
@@ -43,7 +43,7 @@ Two terminals:
 ```bash
 # Terminal 1 — backend (http://localhost:8000)
 source .venv/bin/activate
-cd backend && uvicorn main:app --reload --port 8000
+cd backend && python3 -m uvicorn main:app --reload --port 8000
 ```
 
 ```bash
@@ -66,7 +66,7 @@ If your DB gets into a weird state or the schema changed:
 ```bash
 rm -f data/thoth.db
 rm -rf data/chroma
-cd backend && python seed.py
+cd backend && python3 seed.py
 ```
 
 ---

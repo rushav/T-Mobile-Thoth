@@ -13,7 +13,7 @@ Go to https://console.anthropic.com → API Keys → Create key.
 You'll need this for both Claude Code AND for Thoth's backend (the LLM calls).
 
 ### 3. Install Python 3.11+
-Check with `python --version`. Install from python.org if needed.
+Check with `python3 --version`. Install from python.org if needed.
 
 ### 4. Install Node.js 18+
 Check with `node --version`. Install from nodejs.org if needed.
@@ -145,8 +145,8 @@ After each phase:
 ```bash
 # Test backend
 cd backend
-pip install -r requirements.txt
-uvicorn main:app --reload
+pip3 install -r requirements.txt
+python3 -m uvicorn main:app --reload
 
 # In another terminal, test an endpoint
 curl http://localhost:8000/api/subjects

@@ -6,14 +6,32 @@ const VIEWS = [
 ]
 
 export default function LandingPage() {
+  const openAllWindows = () => {
+    window.open('/user', '_blank');
+    window.open('/sme', '_blank');
+    window.open('/admin', '_blank');
+    window.open('/support', '_blank');
+  };
+
   return (
     <div className="min-h-full p-8 flex flex-col items-center">
       <div className="w-full max-w-4xl">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-slate-800">Project Thoth</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            AI-powered SME knowledge capture and retrieval. Open each view in its own tab — they all share the same backend in real time.
-          </p>
+        <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <span className="font-semibold">Tip:</span> Run <code className="bg-amber-100 px-1.5 py-0.5 rounded font-mono text-xs">./launch.sh</code> from the project root to open all four views automatically in a 2×2 grid.
+        </div>
+        <div className="mb-8 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-800">Project Thoth</h1>
+            <p className="text-sm text-slate-500 mt-1">
+              AI-powered SME knowledge capture and retrieval. Open each view in its own tab — they all share the same backend in real time.
+            </p>
+          </div>
+          <button
+            onClick={openAllWindows}
+            className="shrink-0 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-sm font-medium px-4 py-2 transition"
+          >
+            Relaunch All Windows
+          </button>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {VIEWS.map((v) => (

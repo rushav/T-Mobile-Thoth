@@ -88,15 +88,21 @@ frontend/src/api.js            # API endpoint functions
 - [ ] Admin escalation inbox with detail view + archive
 - [ ] Admin SME directory with contact info + expertise
 - [ ] Admin review trigger button
-- [ ] Landing page with four-window launcher
+- [x] Landing page with four-window launcher (now also has "Relaunch All Windows" button + launch.sh tip)
 - [ ] Profile selector dropdown per window
 - [ ] Polling for real-time updates (admin + SME windows)
+- [x] Hallucination-proof seed data (Zorblatt / Flumgarten / Reverse Plumbing)
+- [x] Single-command launcher (launch.sh + launch.bat) with 2x2 grid
+- [x] Linux compatibility for launch.sh — prereq checks + python3/pip3/`python3 -m uvicorn`
+- [x] TEST_QUERIES.md — 10 hallucination test queries version-controlled
+- [x] launch.sh uses a venv (Ubuntu 24 / PEP 668 fix)
+- [x] launch.sh Linux 2x2 grid via wmctrl + per-page document.title
 
 ### In progress
-- (update this as you work)
+- Run the 10 hallucination test queries from TEST_QUERIES.md end-to-end after launching to verify the SME agents only answer from the fictional KB
 
 ### Blocked / waiting on John
-- (update this when you need something from John's side)
+- John: after pulling, verify that the interview flow works with the new fictional subjects. Run an interview as Dr. Helga Voss about Zorblatt Crystals. Say something minimal like "the crystals glow on day 10." The synthesis should ONLY mention the glow — it should NOT fill in details about 37.2°C or lunar sand from the existing knowledge entries. If it does, the synthesis prompt needs to be stricter about separating existing KB content from new interview content.
 
 ---
 
@@ -114,6 +120,16 @@ Format:
 ### Log
 
 [2026-04-28] [initial setup] — Project created. All files listed above are my responsibility.
+
+⚠️ [2026-04-29] [backend/seed.py, launch.sh, launch.bat, frontend/src/pages/LandingPage.jsx] — MAJOR CHANGE: Replaced all seed data with hallucination-proof fictional content (Zorblatt Crystals, Flumgarten Diplomacy, Reverse Plumbing). Old coffee/milk tea/car data is gone. Added launch.sh and launch.bat for single-command startup with 4-way split screen. John: you need to pull and re-seed. Your SMEDashboardPage and interview flow should work the same — only the test content changed. Run the 10 hallucination test queries in TEST_QUERIES.md to verify your interview synthesis also only uses SME-provided info and doesn't fabricate.
+
+⚠️ [2026-04-29] [TEST_QUERIES.md, launch.sh, README.md, CLAUDE.md, SETUP_GUIDE.md, backend/seed.py] — Added TEST_QUERIES.md with the 10 hallucination test queries + expected answers (version-controlled now, anyone can run them). Linux compat pass on launch.sh: added prereq checks for python3/pip3/node/npm at the top, switched all calls to python3 / pip3 / `python3 -m uvicorn`. Same swap applied to command examples in README.md, CLAUDE.md, SETUP_GUIDE.md, and the seed.py docstring. launch.bat untouched (Windows uses `python`). John: if your local machine has both `python` and `python3`, both still work — but the docs and scripts now consistently call `python3` so they don't break on systems (like this Linux env) where bare `python` isn't installed.
+
+[2026-04-29] [launch.sh] — Removed `2>/dev/null` from the `pip3 install` line so install errors actually surface (kept `-q` for quiet success output). Order was already correct: cd backend → pip3 install → seed-if-needed → uvicorn. No reorder was needed despite my read of the request — verified the file before editing.
+
+⚠️ [2026-04-29] [launch.sh, CLAUDE.md] — Switched launch.sh to use a Python venv at project root (`.venv/`). Required on Ubuntu 24+ since PEP 668 blocks system-wide pip installs. launch.sh now creates `.venv` if missing, activates it, then runs `pip install` / `python seed.py` / `python -m uvicorn` inside the venv (plain `python`/`pip` because the venv maps them correctly). Updated CLAUDE.md Commands section to document `python3 -m venv .venv` + `source .venv/bin/activate` for first-time setup. `.venv/` was already in `.gitignore`. John: after pulling, your first `./launch.sh` will create the venv and install deps fresh — takes a minute. If you previously installed deps system-wide, the old install is unused now but harmless.
+
+⚠️ [2026-04-29] [launch.sh, frontend/src/pages/UserChatPage.jsx, frontend/src/pages/SMEDashboardPage.jsx, frontend/src/pages/AdminPage.jsx, frontend/src/pages/SupportPage.jsx] — Fixed Linux 2x2 grid arrangement. Chrome's `--window-position` is ignored on most Linux WMs, so launch.sh now opens windows plain and arranges them with `wmctrl` after the fact, matching by `document.title`. Each page sets its own title via `useEffect` ("Thoth — User" / "SME" / "Admin" / "Support"). Also added Linux-only wmctrl prereq check at the top, browser detection (google-chrome → chromium-browser → chromium → firefox), and screen-size detection via `xdpyinfo` with a 1920x1080 fallback. macOS/Windows branches unchanged. **John: SMEDashboardPage.jsx is yours, but I added a 2-line `useEffect` setting `document.title` at the top of the component — purely cosmetic, no logic touched. If you'd rather move it elsewhere or set the title differently, go ahead, just keep the literal string `Thoth — SME` (em dash, not hyphen) so launch.sh can still find it.** New runtime dep on Linux: `wmctrl` (sudo apt install wmctrl). Optional: `x11-utils` for `xdpyinfo` — without it the script falls back to 1920x1080.
 
 ---
 
@@ -162,10 +178,10 @@ COLLECTION_NAME = f"subject_{subject_id}"
 
 ## Notes for future me
 
-- When testing the classifier, use these exact queries:
-  - Clear match: "How do I make pour-over coffee?" → Coffee, ~0.9
-  - Ambiguous: "What should I drink today?" → clarification question
-  - No match: "How do I file my taxes?" → escalation
+- When testing the classifier, use these exact queries (full set in TEST_QUERIES.md):
+  - Clear match: "How do I grow Zorblatt Crystals?" → Zorblatt Crystals, ~0.9
+  - Ambiguous: "What should I do about the gurgling sound?" → clarification question (could be Reverse Plumbing or out-of-scope)
+  - No match: "How do I cook pasta?" → escalation
 - If classifier confidence seems off, the issue is usually in the CLASSIFIER_PROMPT, not the code
 - react-markdown is installed for rendering responses — don't switch to dangerouslySetInnerHTML
 - Polling interval is 5 seconds — can increase to 10 if it causes performance issues

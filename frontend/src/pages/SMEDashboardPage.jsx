@@ -18,6 +18,9 @@ export default function SMEDashboardPage() {
   const [me, setMe] = useState(currentProfile('sme'))
   const [tab, setTab] = useState('interview')
 
+  // Distinct title so launch.sh's wmctrl pass can find this window
+  useEffect(() => { document.title = 'Thoth — SME' }, [])
+
   // Poll the active SME's profile so review-request flags appear within 5s
   // even if the admin sets one in another tab.
   useEffect(() => {

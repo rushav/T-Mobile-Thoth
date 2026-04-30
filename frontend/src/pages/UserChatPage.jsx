@@ -14,6 +14,9 @@ export default function UserChatPage() {
   const [pendingErr, setPendingErr] = useState('')
   const fileRef = useRef(null)
 
+  // Distinct title so launch.sh's wmctrl pass can find this window
+  useEffect(() => { document.title = 'Thoth — User' }, [])
+
   // Reload history whenever the active user changes.
   useEffect(() => {
     if (!profile) { setMessages([]); return }
