@@ -79,29 +79,28 @@ frontend/src/api.js            # API endpoint functions
 ## Current status
 
 ### Working
-- [ ] Interview start — creates session, links to SME and subject
-- [ ] Interview messaging — multi-turn conversation with Thoth, history persists
-- [ ] Interview structured mode — Thoth offers guided vs. freeform approach
-- [ ] Synthesis generation — produces summary from interview + uploaded files only
-- [ ] Synthesis revision — "request changes" actually revises and keeps conversation
+- [x] Interview start — creates session, links to SME and subject
+- [x] Interview messaging — multi-turn conversation with Thoth, history persists
+- [x] Interview structured mode — Thoth offers guided vs. freeform approach
+- [x] Synthesis generation — produces summary from interview + uploaded files only
+- [x] Synthesis revision — "request changes" actually revises and keeps conversation
 - [ ] SME approval — moves entry to "pending_admin_review" (not straight to KB)
 - [ ] File upload — PDF/docx/txt parsed and linked to interview
 - [ ] SME dashboard — interview chat, pending reviews, review requests from admin
 - [ ] SME subject scoping — SMEs only see their own subjects, not others'
 - [ ] Subject creation — new subjects immediately available for that SME
 - [ ] ChromaDB integration — approved entries added to subject-specific collections
-- [ ] Seed script — 3 subjects, 3 SMEs with expertise + contact info, 6 knowledge entries
+- [x] Seed script — 3 subjects, 3 SMEs with expertise + contact info, 6 knowledge entries
 - [ ] Loading spinner during synthesis generation
 
 ### In progress
 
 **Critical — Fix Before Demo**
 - [x] Add files to interview serialization — include `files` array in `_serialize_interview()` in `backend/routes/interviews.py` so uploaded files survive page refresh
-- [ ] Build interview history/resume tab — add a "My Interviews" tab to `SMEDashboardPage.jsx` that calls `listInterviews(me.id)` and lets you click any past interview to reload its messages, files, synthesis, and status back into the InterviewTab
-- [ ] Seed John Huang + Climbing subject — add John Huang (SME, Climbing, Sport Climbing) to `seed.py` so the demo doesn't require a raw API call before it starts
+- [x] Build interview history/resume tab — add a "My Interviews" tab to `SMEDashboardPage.jsx` that calls `listInterviews(me.id)` and lets you click any past interview to reload its messages, files, synthesis, and status back into the InterviewTab
 
 **High — Broken Behavior**
-- [ ] Add "Request Changes" to ReviewsTab — the Pending Reviews tab only has Approve/Reject; wire in `ReviewPanel` and hook `request_changes` to `reviewInterview(id, 'request_changes', feedback)` via the linked interview id
+- [x] Add "Request Changes" to ReviewsTab — the Pending Reviews tab only has Approve/Reject; wire in `ReviewPanel` and hook `request_changes` to `reviewInterview(id, 'request_changes', feedback)` via the linked interview id
 - [ ] Add `request_changes` support to `review.py` — only handles `approve` and `reject`; add `request_changes` action that looks up the entry's linked interview and delegates to `interviewer.revise()`
 - [ ] Fix wrong "done" message after rejection — `setStatus('done')` fires for both approve and reject; differentiate so the done screen shows "rejected, no further action" instead of "queued for admin approval"
 - [ ] Warn before switching profiles mid-interview — add a `window.confirm` guard if `interviewId !== null && status !== 'idle'` when the profile dropdown changes
