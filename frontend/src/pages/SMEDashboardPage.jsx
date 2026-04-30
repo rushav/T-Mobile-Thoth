@@ -500,10 +500,10 @@ function ReviewsTab({ me }) {
     return () => clearInterval(id)
   }, [me.id])
 
-  const act = async (entry_id, action) => {
+  const act = async (entry_id, action, feedback = undefined) => {
     setBusy(true)
     try {
-      await reviewEntry(entry_id, action, me.id)
+      await reviewEntry(entry_id, action, me.id, feedback)
       await refresh()
     } catch (e) { setErr(e.message) } finally { setBusy(false) }
   }
@@ -514,19 +514,17 @@ function ReviewsTab({ me }) {
       {rows.length === 0 && <div className="text-sm text-slate-500">No pending entries for your subjects.</div>}
       {rows.map((r) => (
         <div key={r.id} className="bg-white border rounded-lg p-4">
-          <div className="flex items-center justify-between mb-2">
-            <div>
-              <div className="font-semibold text-slate-800">{r.title}</div>
-              <div className="text-xs text-slate-500">{r.subject_name} · contributed by {r.contributor_name || 'unknown'}</div>
-            </div>
-            <div className="flex gap-2">
-              <button onClick={() => act(r.id, 'approve')} disabled={busy} className="rounded bg-emerald-600 text-white text-sm px-3 py-1 hover:bg-emerald-700">Approve</button>
-              <button onClick={() => act(r.id, 'reject')} disabled={busy} className="rounded bg-rose-600 text-white text-sm px-3 py-1 hover:bg-rose-700">Reject</button>
-            </div>
+          <div className="mb-3">
+            <div className="font-semibold text-slate-800">{r.title}</div>
+            <div className="text-xs text-slate-500">{r.subject_name} · contributed by {r.contributor_name || 'unknown'}</div>
           </div>
-          <div className="text-sm text-slate-700 bg-slate-50 border rounded p-3 max-h-64 overflow-auto">
-            <ReactMarkdown>{r.content || ''}</ReactMarkdown>
-          </div>
+          <ReviewPanel
+            synthesis={r.content}
+            onApprove={() => act(r.id, 'approve')}
+            onReject={() => act(r.id, 'reject')}
+            onRequestChanges={(feedback) => act(r.id, 'request_changes', feedback)}
+            busy={busy}
+          />
         </div>
       ))}
     </div>
