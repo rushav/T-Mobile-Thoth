@@ -1,7 +1,7 @@
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from database import get_db
 import models
 from agents import interviewer
@@ -11,6 +11,15 @@ router = APIRouter(prefix="/api/interviews", tags=["interviews"])
 
 
 VALID_MODES = {"structured", "freeform"}
+
+
+def _serialize_file(f) -> dict:
+    return {
+        "id": f.id,
+        "filename": f.filename,
+        "file_type": f.file_type,
+        "extracted_chars": len(f.extracted_text or ""),
+    }
 
 
 def _serialize_interview(interview: models.Interview) -> dict:
@@ -24,6 +33,7 @@ def _serialize_interview(interview: models.Interview) -> dict:
         "synthesis": interview.synthesis,
         "synthesis_status": interview.synthesis_status,
         "entry_id": interview.entry_id,
+        "files": [_serialize_file(f) for f in (interview.files or [])],
     }
 
 
@@ -236,7 +246,7 @@ def get_interview(interview_id: int, db: Session = Depends(get_db)):
 
 @router.get("")
 def list_interviews(sme_id: int | None = None, db: Session = Depends(get_db)):
-    q = db.query(models.Interview)
+    q = db.query(models.Interview).options(joinedload(models.Interview.files))
     if sme_id is not None:
         q = q.filter(models.Interview.sme_id == sme_id)
     rows = q.order_by(models.Interview.created_at.desc()).all()
