@@ -84,14 +84,14 @@ frontend/src/api.js            # API endpoint functions
 - [x] Interview structured mode — Thoth offers guided vs. freeform approach
 - [x] Synthesis generation — produces summary from interview + uploaded files only
 - [x] Synthesis revision — "request changes" actually revises and keeps conversation
-- [ ] SME approval — moves entry to "pending_admin_review" (not straight to KB)
-- [ ] File upload — PDF/docx/txt parsed and linked to interview
-- [ ] SME dashboard — interview chat, pending reviews, review requests from admin
-- [ ] SME subject scoping — SMEs only see their own subjects, not others'
-- [ ] Subject creation — new subjects immediately available for that SME
-- [ ] ChromaDB integration — approved entries added to subject-specific collections
+- [x] SME approval — moves entry to "pending_admin_review" (not straight to KB)
+- [x] File upload — PDF/docx/txt parsed and linked to interview
+- [x] SME dashboard — interview chat, pending reviews, review requests from admin
+- [x] SME subject scoping — SMEs only see their own subjects, not others'
+- [x] Subject creation — new subjects immediately available for that SME
+- [x] ChromaDB integration — approved entries added to subject-specific collections
 - [x] Seed script — 3 subjects, 3 SMEs with expertise + contact info, 6 knowledge entries
-- [ ] Loading spinner during synthesis generation
+- [x] Loading spinner during synthesis generation
 
 ### In progress
 
@@ -101,7 +101,7 @@ frontend/src/api.js            # API endpoint functions
 
 **High — Broken Behavior**
 - [x] Add "Request Changes" to ReviewsTab — the Pending Reviews tab only has Approve/Reject; wire in `ReviewPanel` and hook `request_changes` to `reviewInterview(id, 'request_changes', feedback)` via the linked interview id
-- [ ] Add `request_changes` support to `review.py` — only handles `approve` and `reject`; add `request_changes` action that looks up the entry's linked interview and delegates to `interviewer.revise()`
+- [x] Add `request_changes` support to `review.py` — only handles `approve` and `reject`; add `request_changes` action that looks up the entry's linked interview and delegates to `interviewer.revise()`
 - [ ] Fix wrong "done" message after rejection — `setStatus('done')` fires for both approve and reject; differentiate so the done screen shows "rejected, no further action" instead of "queued for admin approval"
 - [ ] Warn before switching profiles mid-interview — add a `window.confirm` guard if `interviewId !== null && status !== 'idle'` when the profile dropdown changes
 
@@ -117,7 +117,7 @@ frontend/src/api.js            # API endpoint functions
 - [ ] Add file removal — once `FileUpload.jsx` exists, add a delete button per file that calls a new `DELETE /api/files/{id}` endpoint; remove the file record and clear `extracted_text`
 - [ ] Detect active in-progress interviews on start — before starting a new interview, check `listInterviews(me.id)` for any with `synthesis_status === 'draft'`; show a warning banner ("You have an unfinished interview for X — resume it?")
 - [ ] Add `rejection_reason` display to ReviewsTab — when an entry has `status === 'rejected'`, show the rejection reason inline so the contributor knows why
-- [ ] Update JOHN_README.md status checklist — tick all 13 already-implemented items in the Working section
+- [x] Update JOHN_README.md status checklist — tick all 13 already-implemented items in the Working section
 - [ ] Add image file type handling — add graceful fallback in `file_parser.py` that returns `"[Image attached — content not extractable]"` so `.png`/`.jpg` uploads don't hard-fail
 - [ ] Guard against double-synthesize — if the SME generates, requests changes, then clicks Generate again it clobbers the revision; remove or disable the button after first synthesis
 - [ ] Add `extracted_chars: 0` guard in file upload UI — if a file parses to 0 characters (encrypted PDF, empty docx), show a warning in the file sidebar instead of silently succeeding
@@ -139,6 +139,8 @@ Format:
 ```
 
 ### Log
+
+[2026-04-29] [backend/routes/interviews.py, backend/routes/review.py, frontend/src/pages/SMEDashboardPage.jsx, john_readme.md] — Added interview file serialization so uploads survive refresh, built the SME "My Interviews" history/resume flow, added SME `request_changes` handling on the entry review route, and updated the README checklist to reflect completed work.
 
 [2026-04-28] [initial setup] — Project created. All files listed above are my responsibility.
 
