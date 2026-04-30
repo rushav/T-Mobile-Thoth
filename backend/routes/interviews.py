@@ -28,6 +28,7 @@ def _serialize_interview(interview: models.Interview) -> dict:
         "sme_id": interview.sme_id,
         "subject_id": interview.subject_id,
         "subject_name": interview.subject.name if interview.subject else None,
+        "created_at": interview.created_at.isoformat() if interview.created_at else None,
         "mode": interview.mode,
         "messages": interview.messages or [],
         "synthesis": interview.synthesis,

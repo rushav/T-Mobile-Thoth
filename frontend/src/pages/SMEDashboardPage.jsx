@@ -7,7 +7,7 @@ import {
   currentProfile, setProfile,
   getProfile, getProfileSubjects, createSubject,
   startInterview, sendInterviewMessage,
-  synthesizeInterview, reviewInterview, uploadFile,
+  synthesizeInterview, reviewInterview, uploadFile, listInterviews,
   pendingForSme, reviewEntry,
   clearReviewRequest,
 } from '../api'
@@ -17,6 +17,7 @@ const POLL_MS = 5000
 export default function SMEDashboardPage() {
   const [me, setMe] = useState(currentProfile('sme'))
   const [tab, setTab] = useState('interview')
+  const [selectedInterview, setSelectedInterview] = useState(null)
 
   // Distinct title so launch.sh's wmctrl pass can find this window
   useEffect(() => { document.title = 'Thoth — SME' }, [])
@@ -75,8 +76,23 @@ export default function SMEDashboardPage() {
             <div className="flex gap-4 border-b mb-4">
               <TabButton active={tab === 'interview'} onClick={() => setTab('interview')}>Interview</TabButton>
               <TabButton active={tab === 'reviews'} onClick={() => setTab('reviews')}>Pending Reviews</TabButton>
+              <TabButton active={tab === 'history'} onClick={() => setTab('history')}>My Interviews</TabButton>
             </div>
-            {tab === 'interview' ? <InterviewTab me={me} /> : <ReviewsTab me={me} />}
+            {tab === 'interview' && (
+              <InterviewTab
+                key={selectedInterview?.id ?? 'new'}
+                me={me}
+                initialInterview={selectedInterview}
+                onNewInterview={() => { setSelectedInterview(null); setTab('interview') }}
+              />
+            )}
+            {tab === 'reviews' && <ReviewsTab me={me} />}
+            {tab === 'history' && (
+              <HistoryTab
+                me={me}
+                onSelectInterview={(iv) => { setSelectedInterview(iv); setTab('interview') }}
+              />
+            )}
           </div>
         </div>
       )}
@@ -96,18 +112,26 @@ function TabButton({ active, onClick, children }) {
   )
 }
 
-function InterviewTab({ me }) {
+function InterviewTab({ me, initialInterview = null, onNewInterview }) {
   const [mySubjects, setMySubjects] = useState([])
-  const [subjectId, setSubjectId] = useState('')
   const [mode, setMode] = useState('structured')
-  const [interviewId, setInterviewId] = useState(null)
-  const [messages, setMessages] = useState([])
-  const [files, setFiles] = useState([])
+  const [interviewId, setInterviewId] = useState(() => initialInterview?.id ?? null)
+  const [messages, setMessages] = useState(() => initialInterview?.messages ?? [])
+  const [files, setFiles] = useState(() => initialInterview?.files ?? [])
   const [busy, setBusy] = useState(false)
   const [synthesizing, setSynthesizing] = useState(false)
-  const [synthesis, setSynthesis] = useState(null)
-  const [status, setStatus] = useState('idle') // idle | chatting | reviewing | done
+  const [synthesis, setSynthesis] = useState(() => initialInterview?.synthesis ?? '')
+  const [status, setStatus] = useState(() => {
+    if (!initialInterview) return 'idle'
+    if (!initialInterview.synthesis) return 'chatting'
+    if (['draft', 'pending_review'].includes(initialInterview.synthesis_status)) return 'reviewing'
+    return 'done'
+  }) // idle | chatting | reviewing | done
+  const [subjectId, setSubjectId] = useState(() =>
+    initialInterview ? String(initialInterview.subject_id) : ''
+  )
   const fileRef = useRef(null)
+  const didMountRef = useRef(false)
   const [err, setErr] = useState('')
 
   // New-subject form
@@ -129,6 +153,10 @@ function InterviewTab({ me }) {
 
   useEffect(() => {
     refreshMySubjects()
+    if (!didMountRef.current) {
+      didMountRef.current = true
+      return
+    }
     // Reset interview state when the active SME changes.
     setInterviewId(null); setMessages([]); setFiles([]); setSynthesis(null); setStatus('idle'); setSubjectId('')
   }, [me.id])
@@ -199,10 +227,6 @@ function InterviewTab({ me }) {
       if (r.synthesis) setSynthesis(r.synthesis)
       setStatus('reviewing')
     } catch (e) { setErr(e.message) } finally { setSynthesizing(false) }
-  }
-
-  const reset = () => {
-    setInterviewId(null); setMessages([]); setFiles([]); setSynthesis(null); setStatus('idle'); setSubjectId('')
   }
 
   const submitNewSubject = async (e) => {
@@ -321,7 +345,7 @@ function InterviewTab({ me }) {
       <div className="bg-white border rounded-lg p-6 text-center">
         <div className="text-lg font-semibold text-slate-800 mb-2">Interview complete</div>
         <p className="text-sm text-slate-500 mb-4">Your contribution is queued for admin approval.</p>
-        <button onClick={reset} className="rounded bg-teal-700 text-white px-4 py-2 text-sm font-medium hover:bg-teal-800">Start another</button>
+        <button onClick={onNewInterview} className="rounded bg-teal-700 text-white px-4 py-2 text-sm font-medium hover:bg-teal-800">+ New Interview</button>
       </div>
     )
   }
@@ -382,6 +406,81 @@ function InterviewTab({ me }) {
 function Spinner() {
   return (
     <span className="inline-block w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+  )
+}
+
+function HistoryTab({ me, onSelectInterview }) {
+  const [interviews, setInterviews] = useState([])
+  const [busy, setBusy] = useState(true)
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    if (!me) return
+    setBusy(true)
+    setErr('')
+    listInterviews(me.id)
+      .then(setInterviews)
+      .catch(() => setErr('Failed to load interviews'))
+      .finally(() => setBusy(false))
+  }, [me?.id])
+
+  const statusLabel = (iv) => {
+    if (!iv.synthesis) return { text: 'In Progress', color: 'gray' }
+    const map = {
+      draft: { text: 'Draft', color: 'yellow' },
+      pending_review: { text: 'Pending', color: 'yellow' },
+      approved: { text: 'Approved', color: 'green' },
+      rejected: { text: 'Rejected', color: 'red' },
+    }
+    return map[iv.synthesis_status] ?? { text: iv.synthesis_status, color: 'gray' }
+  }
+
+  if (busy) return <p className="p-6 text-gray-500">Loading…</p>
+  if (err) return <p className="p-6 text-red-500">{err}</p>
+  if (!interviews.length) {
+    return <p className="p-6 text-gray-500">No interviews yet. Start one from the Interview tab.</p>
+  }
+
+  return (
+    <div className="overflow-x-auto p-4">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-left text-gray-500 border-b">
+            <th className="pb-2 pr-4">Date</th>
+            <th className="pb-2 pr-4">Subject</th>
+            <th className="pb-2 pr-4">Mode</th>
+            <th className="pb-2 pr-4">Status</th>
+            <th className="pb-2">Synthesis Preview</th>
+          </tr>
+        </thead>
+        <tbody>
+          {interviews.map(iv => {
+            const { text, color } = statusLabel(iv)
+            const preview = iv.synthesis
+              ? iv.synthesis.slice(0, 80) + (iv.synthesis.length > 80 ? '…' : '')
+              : '—'
+            const date = iv.created_at
+              ? new Date(iv.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+              : '—'
+            return (
+              <tr
+                key={iv.id}
+                onClick={() => onSelectInterview(iv)}
+                className="border-b hover:bg-gray-50 cursor-pointer"
+              >
+                <td className="py-2 pr-4 whitespace-nowrap">{date}</td>
+                <td className="py-2 pr-4">{iv.subject_name ?? '—'}</td>
+                <td className="py-2 pr-4 capitalize">{iv.mode}</td>
+                <td className="py-2 pr-4">
+                  <span className={`text-${color}-600 font-medium`}>{text}</span>
+                </td>
+                <td className="py-2 text-gray-500">{preview}</td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
   )
 }
 

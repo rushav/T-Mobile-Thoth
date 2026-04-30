@@ -94,7 +94,34 @@ frontend/src/api.js            # API endpoint functions
 - [ ] Loading spinner during synthesis generation
 
 ### In progress
-- (update this as you work)
+
+**Critical — Fix Before Demo**
+- [x] Add files to interview serialization — include `files` array in `_serialize_interview()` in `backend/routes/interviews.py` so uploaded files survive page refresh
+- [ ] Build interview history/resume tab — add a "My Interviews" tab to `SMEDashboardPage.jsx` that calls `listInterviews(me.id)` and lets you click any past interview to reload its messages, files, synthesis, and status back into the InterviewTab
+- [ ] Seed John Huang + Climbing subject — add John Huang (SME, Climbing, Sport Climbing) to `seed.py` so the demo doesn't require a raw API call before it starts
+
+**High — Broken Behavior**
+- [ ] Add "Request Changes" to ReviewsTab — the Pending Reviews tab only has Approve/Reject; wire in `ReviewPanel` and hook `request_changes` to `reviewInterview(id, 'request_changes', feedback)` via the linked interview id
+- [ ] Add `request_changes` support to `review.py` — only handles `approve` and `reject`; add `request_changes` action that looks up the entry's linked interview and delegates to `interviewer.revise()`
+- [ ] Fix wrong "done" message after rejection — `setStatus('done')` fires for both approve and reject; differentiate so the done screen shows "rejected, no further action" instead of "queued for admin approval"
+- [ ] Warn before switching profiles mid-interview — add a `window.confirm` guard if `interviewId !== null && status !== 'idle'` when the profile dropdown changes
+
+**Medium — Missing Behavior the Spec Requires**
+- [ ] Set `review_date` on submission — in `submit_for_admin_review()` in `knowledge.py`, set `entry.review_date = datetime.utcnow() + timedelta(days=180)` when moving to `pending_admin_review`
+- [ ] Add `review_requested` boolean to `KnowledgeEntry` — CLAUDE.md spec lists this column; add to `models.py` and set `True` when admin triggers a review request on an entry
+- [ ] Reconcile status value "pending" → "pending_review" — CLAUDE.md contract specifies `"pending_review"` not `"pending"`; align `knowledge.py`, `interviews.py`, and `review.py` (coordinate with Rushav first)
+- [ ] Seed escalation demo data — add 2–3 realistic open escalations to `seed.py` so the admin escalations inbox isn't empty on first run
+- [ ] Add `GET /api/interviews/{id}/files` endpoint — or fold files into the interview GET response so the frontend can restore the files sidebar without local state
+
+**Low — Polish and Structure**
+- [ ] Extract `FileUpload.jsx` component — pull inline file input + upload logic out of `SMEDashboardPage.jsx` into a proper component with its own loading state and file list
+- [ ] Add file removal — once `FileUpload.jsx` exists, add a delete button per file that calls a new `DELETE /api/files/{id}` endpoint; remove the file record and clear `extracted_text`
+- [ ] Detect active in-progress interviews on start — before starting a new interview, check `listInterviews(me.id)` for any with `synthesis_status === 'draft'`; show a warning banner ("You have an unfinished interview for X — resume it?")
+- [ ] Add `rejection_reason` display to ReviewsTab — when an entry has `status === 'rejected'`, show the rejection reason inline so the contributor knows why
+- [ ] Update JOHN_README.md status checklist — tick all 13 already-implemented items in the Working section
+- [ ] Add image file type handling — add graceful fallback in `file_parser.py` that returns `"[Image attached — content not extractable]"` so `.png`/`.jpg` uploads don't hard-fail
+- [ ] Guard against double-synthesize — if the SME generates, requests changes, then clicks Generate again it clobbers the revision; remove or disable the button after first synthesis
+- [ ] Add `extracted_chars: 0` guard in file upload UI — if a file parses to 0 characters (encrypted PDF, empty docx), show a warning in the file sidebar instead of silently succeeding
 
 ### Blocked / waiting on Rushav
 - (update this when you need something from Rushav's side)
