@@ -18,6 +18,7 @@ export default function SMEDashboardPage() {
   const [me, setMe] = useState(currentProfile('sme'))
   const [tab, setTab] = useState('interview')
   const [selectedInterview, setSelectedInterview] = useState(null)
+  const activeInterviewRef = useRef({ interviewId: null, status: 'idle' })
 
   // Distinct title so launch.sh's wmctrl pass can find this window
   useEffect(() => { document.title = 'Thoth — SME' }, [])
@@ -48,9 +49,18 @@ export default function SMEDashboardPage() {
     } catch {}
   }
 
+  const handleProfileChange = (profile) => {
+    const { interviewId, status } = activeInterviewRef.current
+    if (interviewId !== null && status !== 'idle') {
+      const confirmed = window.confirm('You have an active interview in progress. Switching profiles will leave it behind. Continue?')
+      if (!confirmed) return
+    }
+    setMe(profile)
+  }
+
   return (
     <div className="flex flex-col h-full">
-      <RoleHeader role="sme" onProfileChange={setMe} />
+      <RoleHeader role="sme" onProfileChange={handleProfileChange} />
       {!me ? (
         <div className="flex-1 flex items-center justify-center text-sm text-slate-500">
           Pick or create an SME profile in the header to start.
@@ -82,6 +92,7 @@ export default function SMEDashboardPage() {
               <InterviewTab
                 key={selectedInterview?.id ?? 'new'}
                 me={me}
+                activeInterviewRef={activeInterviewRef}
                 initialInterview={selectedInterview}
                 onNewInterview={() => { setSelectedInterview(null); setTab('interview') }}
               />
@@ -112,7 +123,7 @@ function TabButton({ active, onClick, children }) {
   )
 }
 
-function InterviewTab({ me, initialInterview = null, onNewInterview }) {
+function InterviewTab({ me, activeInterviewRef, initialInterview = null, onNewInterview }) {
   const [mySubjects, setMySubjects] = useState([])
   const [mode, setMode] = useState('structured')
   const [interviewId, setInterviewId] = useState(() => initialInterview?.id ?? null)
@@ -125,8 +136,10 @@ function InterviewTab({ me, initialInterview = null, onNewInterview }) {
     if (!initialInterview) return 'idle'
     if (!initialInterview.synthesis) return 'chatting'
     if (['draft', 'pending_review'].includes(initialInterview.synthesis_status)) return 'reviewing'
-    return 'done'
-  }) // idle | chatting | reviewing | done
+    if (initialInterview.synthesis_status === 'approved') return 'done_approved'
+    if (initialInterview.synthesis_status === 'rejected') return 'done_rejected'
+    return 'reviewing'
+  }) // idle | chatting | reviewing | done_approved | done_rejected
   const [subjectId, setSubjectId] = useState(() =>
     initialInterview ? String(initialInterview.subject_id) : ''
   )
@@ -160,6 +173,11 @@ function InterviewTab({ me, initialInterview = null, onNewInterview }) {
     // Reset interview state when the active SME changes.
     setInterviewId(null); setMessages([]); setFiles([]); setSynthesis(null); setStatus('idle'); setSubjectId('')
   }, [me.id])
+
+  useEffect(() => {
+    if (!activeInterviewRef) return
+    activeInterviewRef.current = { interviewId, status }
+  }, [activeInterviewRef, interviewId, status])
 
   const start = async () => {
     if (!subjectId) return
@@ -208,7 +226,7 @@ function InterviewTab({ me, initialInterview = null, onNewInterview }) {
     setBusy(true); setErr('')
     try {
       await reviewInterview(interviewId, 'approve')
-      setStatus('done')
+      setStatus('done_approved')
     } catch (e) { setErr(e.message) } finally { setBusy(false) }
   }
 
@@ -216,7 +234,7 @@ function InterviewTab({ me, initialInterview = null, onNewInterview }) {
     setBusy(true); setErr('')
     try {
       await reviewInterview(interviewId, 'reject')
-      setStatus('done')
+      setStatus('done_rejected')
     } catch (e) { setErr(e.message) } finally { setBusy(false) }
   }
 
@@ -340,11 +358,18 @@ function InterviewTab({ me, initialInterview = null, onNewInterview }) {
     )
   }
 
-  if (status === 'done') {
+  if (status === 'done_approved' || status === 'done_rejected') {
+    const rejected = status === 'done_rejected'
     return (
       <div className="bg-white border rounded-lg p-6 text-center">
-        <div className="text-lg font-semibold text-slate-800 mb-2">Interview complete</div>
-        <p className="text-sm text-slate-500 mb-4">Your contribution is queued for admin approval.</p>
+        <div className="text-lg font-semibold text-slate-800 mb-2">
+          {rejected ? 'Interview rejected' : 'Interview complete'}
+        </div>
+        <p className={`text-sm mb-4 ${rejected ? 'text-rose-600' : 'text-slate-500'}`}>
+          {rejected
+            ? 'This entry has been rejected. No further action will be taken.'
+            : 'Successfully approved and queued for admin review.'}
+        </p>
         <button onClick={onNewInterview} className="rounded bg-teal-700 text-white px-4 py-2 text-sm font-medium hover:bg-teal-800">+ New Interview</button>
       </div>
     )

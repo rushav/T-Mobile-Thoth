@@ -102,8 +102,8 @@ frontend/src/api.js            # API endpoint functions
 **High — Broken Behavior**
 - [x] Add "Request Changes" to ReviewsTab — the Pending Reviews tab only has Approve/Reject; wire in `ReviewPanel` and hook `request_changes` to `reviewInterview(id, 'request_changes', feedback)` via the linked interview id
 - [x] Add `request_changes` support to `review.py` — only handles `approve` and `reject`; add `request_changes` action that looks up the entry's linked interview and delegates to `interviewer.revise()`
-- [ ] Fix wrong "done" message after rejection — `setStatus('done')` fires for both approve and reject; differentiate so the done screen shows "rejected, no further action" instead of "queued for admin approval"
-- [ ] Warn before switching profiles mid-interview — add a `window.confirm` guard if `interviewId !== null && status !== 'idle'` when the profile dropdown changes
+- [x] Fix wrong "done" message after rejection — `setStatus('done')` fires for both approve and reject; differentiate so the done screen shows "rejected, no further action" instead of "queued for admin approval"
+- [x] Warn before switching profiles mid-interview — add a `window.confirm` guard if `interviewId !== null && status !== 'idle'` when the profile dropdown changes
 
 **Medium — Missing Behavior the Spec Requires**
 - [ ] Set `review_date` on submission — in `submit_for_admin_review()` in `knowledge.py`, set `entry.review_date = datetime.utcnow() + timedelta(days=180)` when moving to `pending_admin_review`
@@ -139,6 +139,8 @@ Format:
 ```
 
 ### Log
+
+[2026-04-29] [frontend/src/pages/SMEDashboardPage.jsx, john_readme.md] — Added a profile-switch guard for active SME interviews and split the final interview state into distinct approved vs rejected completion screens, then updated the README checklist to mark those dashboard fixes complete.
 
 [2026-04-29] [backend/routes/interviews.py, backend/routes/review.py, frontend/src/pages/SMEDashboardPage.jsx, john_readme.md] — Added interview file serialization so uploads survive refresh, built the SME "My Interviews" history/resume flow, added SME `request_changes` handling on the entry review route, and updated the README checklist to reflect completed work.
 
