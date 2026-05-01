@@ -98,8 +98,12 @@ def send_message(interview_id: int, payload: MessagePayload, db: Session = Depen
     if not interview:
         raise HTTPException(status_code=404, detail="Interview not found")
 
+    is_post_review = interview.synthesis_status == "post_review_chat"
     msgs = list(interview.messages or [])
-    msgs.append({"role": "user", "content": payload.content, "ts": datetime.utcnow().isoformat()})
+    user_msg = {"role": "user", "content": payload.content, "ts": datetime.utcnow().isoformat()}
+    if is_post_review:
+        user_msg["post_review"] = True
+    msgs.append(user_msg)
 
     history = [{"role": m["role"], "content": m["content"]} for m in msgs]
     reply = interviewer.next_message(
@@ -109,7 +113,10 @@ def send_message(interview_id: int, payload: MessagePayload, db: Session = Depen
         mode=interview.mode or "structured",
     )
 
-    msgs.append({"role": "assistant", "content": reply, "ts": datetime.utcnow().isoformat()})
+    reply_msg = {"role": "assistant", "content": reply, "ts": datetime.utcnow().isoformat()}
+    if is_post_review:
+        reply_msg["post_review"] = True
+    msgs.append(reply_msg)
     interview.messages = msgs
     db.commit()
     db.refresh(interview)
@@ -205,33 +212,44 @@ def review(interview_id: int, payload: ReviewPayload, db: Session = Depends(get_
         }
 
     if payload.action == "request_changes":
-        # Send transcript + previous synthesis + feedback back to Claude for revision.
-        transcript = interviewer.transcript_from_messages(interview.messages or [])
-        uploaded_parts = [f.extracted_text or "" for f in interview.files if f.extracted_text]
-        uploaded_text = "\n\n".join(uploaded_parts)
+        if not payload.feedback or not payload.feedback.strip():
+            raise HTTPException(status_code=400, detail="feedback is required for request_changes")
 
-        revised = interviewer.revise(
-            sme_name=interview.sme.name,
-            subject_name=interview.subject.name,
-            transcript=transcript,
-            uploaded_text=uploaded_text,
-            previous_synthesis=interview.synthesis or "",
-            feedback=payload.feedback or "",
+        msgs = list(interview.messages or [])
+
+        sme_msg = {
+            "role": "user",
+            "content": payload.feedback,
+            "ts": datetime.utcnow().isoformat(),
+            "post_review": True,
+        }
+        msgs.append(sme_msg)
+
+        history = [{"role": m["role"], "content": m["content"]} for m in msgs]
+        reply = interviewer.next_message(
+            interview.sme.name,
+            interview.subject.name,
+            messages=history,
+            mode=interview.mode or "structured",
         )
 
-        # Update both the interview synthesis and the linked entry. Status stays pending_review
-        # so the SME reviews the revision.
-        title = _title_from_synthesis(revised, entry.title)
-        knowledge_svc.update_entry_content(db, entry.id, title=title, content=revised)
-        interview.synthesis = revised
-        interview.synthesis_status = "pending_review"
+        reply_msg = {
+            "role": "assistant",
+            "content": reply,
+            "ts": datetime.utcnow().isoformat(),
+            "post_review": True,
+        }
+        msgs.append(reply_msg)
+
+        interview.messages = msgs
+        interview.synthesis_status = "post_review_chat"
         db.commit()
         db.refresh(interview)
         return {
-            "status": "pending_review",
-            "entry_id": entry.id,
-            "synthesis": revised,
-            "interview": _serialize_interview(interview),
+            "status": "post_review_chat",
+            "reply": reply,
+            "messages": msgs,
+            "entry_id": interview.entry_id,
         }
 
     raise HTTPException(status_code=400, detail="action must be approve|reject|request_changes")

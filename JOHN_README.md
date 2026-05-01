@@ -27,6 +27,11 @@ When John starts a session and asks to read both READMEs, do the following:
 
 I own the "write path" — everything that gets knowledge into the system. Interviews, file uploads, synthesis, SME review flow, and the seed data.
 
+### Local run note
+
+- Start the backend from `backend/` with `python3 -m uvicorn main:app --reload`, or from the repo root with `python3 -m uvicorn main:app --reload --app-dir backend`.
+- `python3 -m uvicorn main:app --reload` fails from the repo root because the ASGI app lives in `backend/main.py`, not `./main.py`.
+
 ---
 
 ## Files I own (don't edit these without telling me)
@@ -83,7 +88,7 @@ frontend/src/api.js            # API endpoint functions
 - [x] Interview messaging — multi-turn conversation with Thoth, history persists
 - [x] Interview structured mode — Thoth offers guided vs. freeform approach
 - [x] Synthesis generation — produces summary from interview + uploaded files only
-- [x] Synthesis revision — "request changes" actually revises and keeps conversation
+- [x] Post-review continuation flow — "request changes" re-enters the interview as post-review chat, preserves transcript context, and waits for explicit regeneration
 - [x] SME approval — moves entry to "pending_admin_review" (not straight to KB)
 - [x] File upload — PDF/docx/txt parsed and linked to interview
 - [x] SME dashboard — interview chat, pending reviews, review requests from admin
@@ -139,6 +144,8 @@ Format:
 ```
 
 ### Log
+
+[2026-04-30] [backend/agents/interviewer.py, backend/routes/interviews.py, frontend/src/pages/SMEDashboardPage.jsx, JOHN_README.md] — Changed SME "request changes" so feedback re-enters the interview as post-review chat instead of immediately revising the synthesis, tagged post-review turns in the transcript, added an explicit regenerate action in the dashboard, and documented the correct Uvicorn startup command from the repo root vs `backend/`.
 
 [2026-04-29] [frontend/src/pages/SMEDashboardPage.jsx, john_readme.md] — Added a profile-switch guard for active SME interviews and split the final interview state into distinct approved vs rejected completion screens, then updated the README checklist to mark those dashboard fixes complete.
 

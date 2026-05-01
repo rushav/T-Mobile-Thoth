@@ -58,5 +58,7 @@ def transcript_from_messages(messages: list[dict]) -> str:
     lines = []
     for m in messages:
         role = "Thoth" if m.get("role") == "assistant" else "SME"
+        if m.get("post_review"):
+            role += " [post-review]"
         lines.append(f"{role}: {m.get('content', '')}")
     return "\n\n".join(lines)

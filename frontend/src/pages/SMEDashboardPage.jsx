@@ -135,11 +135,12 @@ function InterviewTab({ me, activeInterviewRef, initialInterview = null, onNewIn
   const [status, setStatus] = useState(() => {
     if (!initialInterview) return 'idle'
     if (!initialInterview.synthesis) return 'chatting'
+    if (initialInterview.synthesis_status === 'post_review_chat') return 'post_review_chatting'
     if (['draft', 'pending_review'].includes(initialInterview.synthesis_status)) return 'reviewing'
     if (initialInterview.synthesis_status === 'approved') return 'done_approved'
     if (initialInterview.synthesis_status === 'rejected') return 'done_rejected'
     return 'reviewing'
-  }) // idle | chatting | reviewing | done_approved | done_rejected
+  }) // idle | chatting | post_review_chatting | reviewing | done_approved | done_rejected
   const [subjectId, setSubjectId] = useState(() =>
     initialInterview ? String(initialInterview.subject_id) : ''
   )
@@ -239,10 +240,21 @@ function InterviewTab({ me, activeInterviewRef, initialInterview = null, onNewIn
   }
 
   const requestChanges = async (feedback) => {
-    setSynthesizing(true); setErr('')
+    setBusy(true)
+    setErr('')
     try {
       const r = await reviewInterview(interviewId, 'request_changes', feedback)
-      if (r.synthesis) setSynthesis(r.synthesis)
+      setMessages(r.messages)
+      setStatus('post_review_chatting')
+    } catch (e) { setErr(e.message) } finally { setBusy(false) }
+  }
+
+  const regenerate = async () => {
+    setSynthesizing(true)
+    setErr('')
+    try {
+      const r = await synthesizeInterview(interviewId)
+      setSynthesis(r.synthesis)
       setStatus('reviewing')
     } catch (e) { setErr(e.message) } finally { setSynthesizing(false) }
   }
@@ -382,7 +394,7 @@ function InterviewTab({ me, activeInterviewRef, initialInterview = null, onNewIn
           messages={messages}
           onSend={onSend}
           busy={busy}
-          disabled={status !== 'chatting'}
+          disabled={status !== 'chatting' && status !== 'post_review_chatting'}
           placeholder="Share what you know…"
         />
       </div>
@@ -410,6 +422,21 @@ function InterviewTab({ me, activeInterviewRef, initialInterview = null, onNewIn
             {synthesizing && <Spinner />}
             {synthesizing ? 'Generating summary…' : 'Generate summary'}
           </button>
+        )}
+        {status === 'post_review_chatting' && (
+          <div className="bg-white border rounded-lg p-4 space-y-3">
+            <p className="text-sm text-slate-600">
+              Add any missing context above, then regenerate when ready.
+            </p>
+            <button
+              onClick={regenerate}
+              disabled={synthesizing}
+              className="w-full rounded bg-emerald-600 text-white px-4 py-2 text-sm font-medium hover:bg-emerald-700 disabled:bg-slate-300 flex items-center justify-center gap-2"
+            >
+              {synthesizing && <Spinner />}
+              {synthesizing ? 'Regenerating…' : 'Regenerate Summary'}
+            </button>
+          </div>
         )}
         {err && <div className="text-sm text-rose-600">{err}</div>}
 
