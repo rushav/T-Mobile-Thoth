@@ -1,4 +1,5 @@
 """Thoth — the orchestrator. Classifies and routes. NEVER answers directly."""
+from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 import models
 from services import classifier
@@ -9,12 +10,36 @@ HIGH_CONFIDENCE = 0.7   # >= → route to subject agent
 MIN_CONFIDENCE = 0.4    # >= but < HIGH_CONFIDENCE → ask clarifying question
                         # <  → escalate to admin
 CLARIFY_GAP = 0.15      # if top two candidates within this gap, treat as ambiguous
+FOLLOWUP_WINDOW_MINUTES = 30  # how recent the last answer must be to count as a follow-up
 
 
 def _has_close_competitors(candidates: list[dict], top_confidence: float) -> bool:
     """True if more than one candidate is within CLARIFY_GAP of the top."""
     near = [c for c in candidates if c.get("confidence", 0.0) >= top_confidence - CLARIFY_GAP]
     return len(near) > 1
+
+
+def _last_answered_query(db: Session, user_id: int | None) -> models.QueryHistory | None:
+    """Most recent answered query for this user within FOLLOWUP_WINDOW_MINUTES.
+
+    Used to detect follow-ups like "give me a shorter answer" — the new message
+    has no domain signal of its own, but it inherits the subject of the last
+    answer in the same session.
+    """
+    if not user_id:
+        return None
+    cutoff = datetime.utcnow() - timedelta(minutes=FOLLOWUP_WINDOW_MINUTES)
+    return (
+        db.query(models.QueryHistory)
+        .filter(
+            models.QueryHistory.user_id == user_id,
+            models.QueryHistory.status == "answered",
+            models.QueryHistory.subject_id.isnot(None),
+            models.QueryHistory.created_at >= cutoff,
+        )
+        .order_by(models.QueryHistory.created_at.desc())
+        .first()
+    )
 
 
 def handle_query(
@@ -96,6 +121,41 @@ def handle_query(
             "candidates": candidates,
             "reasoning": reasoning,
         }
+
+    # Low confidence + a recent answer in the same session → treat as a follow-up
+    # (e.g. "say that more concisely") and route to the prior subject with the
+    # previous Q&A as context, instead of escalating.
+    recent = _last_answered_query(db, user_id)
+    if recent and recent.subject_id is not None:
+        prior_subject = next((s for s in subjects if s.id == recent.subject_id), None)
+        if prior_subject:
+            agent_reply = sme_agent.answer(
+                db,
+                prior_subject.id,
+                prior_subject.name,
+                augmented,
+                prior_exchange=(recent.question, recent.answer or ""),
+            )
+            record = models.QueryHistory(
+                user_id=user_id,
+                question=question,
+                answer=agent_reply["answer"],
+                subject_id=prior_subject.id,
+                status="answered",
+                confidence=f"{confidence:.2f}",
+            )
+            db.add(record)
+            db.commit()
+            return {
+                "status": "answered",
+                "subject": prior_subject.name,
+                "subject_id": prior_subject.id,
+                "confidence": confidence,
+                "answer": agent_reply["answer"],
+                "sources": agent_reply["sources"],
+                "reasoning": "Follow-up to previous answer; routed to last subject.",
+                "follow_up": True,
+            }
 
     # Low confidence everywhere → escalate
     reason = "No matching subject" if not candidates else "Low confidence across all subjects"

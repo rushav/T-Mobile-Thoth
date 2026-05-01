@@ -32,8 +32,18 @@ def expertise_for_subject(db: Session, subject_id: int) -> str:
     return ", ".join(seen)
 
 
-def answer(db: Session, subject_id: int, subject_name: str, question: str, n_results: int = 5) -> dict:
-    chunks = vector_store.query(subject_id, question, n_results=n_results)
+def answer(
+    db: Session,
+    subject_id: int,
+    subject_name: str,
+    question: str,
+    n_results: int = 5,
+    prior_exchange: tuple[str, str] | None = None,
+) -> dict:
+    # On a follow-up, retrieve against the prior question — the new message
+    # ("shorter please") has no domain content of its own.
+    retrieval_query = prior_exchange[0] if prior_exchange else question
+    chunks = vector_store.query(subject_id, retrieval_query, n_results=n_results)
     context = format_context(chunks)
     expertise = expertise_for_subject(db, subject_id)
     expertise_clause = f", specializing in {expertise}" if expertise else ""
@@ -42,9 +52,15 @@ def answer(db: Session, subject_id: int, subject_name: str, question: str, n_res
         expertise_clause=expertise_clause,
         retrieved_context=context,
     )
+    messages: list[dict] = []
+    if prior_exchange:
+        prev_q, prev_a = prior_exchange
+        messages.append({"role": "user", "content": prev_q})
+        messages.append({"role": "assistant", "content": prev_a})
+    messages.append({"role": "user", "content": question})
     reply = chat(
         system=system,
-        messages=[{"role": "user", "content": question}],
+        messages=messages,
         max_tokens=700,
         temperature=0.3,
     )
