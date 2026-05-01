@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from datetime import datetime
 from agents import interviewer
 from database import get_db
 import models
@@ -43,9 +44,8 @@ def pending_for_sme(sme_id: int, db: Session = Depends(get_db)):
         for e in rows
     ]
 
-
 class ReviewAction(BaseModel):
-    action: str  # approve | reject
+    action: str  # approve | reject | request_changes
     reviewer_id: int | None = None
     feedback: str | None = None
 
@@ -68,26 +68,44 @@ def review_entry(entry_id: int, payload: ReviewAction, db: Session = Depends(get
         if not interview:
             raise HTTPException(status_code=404, detail="no linked interview for this entry")
 
-        sme = db.query(models.Profile).filter(models.Profile.id == interview.sme_id).first()
-        subject = db.query(models.Subject).filter(models.Subject.id == interview.subject_id).first()
-        transcript = interviewer.transcript_from_messages(interview.messages or [])
+        if not payload.feedback or not payload.feedback.strip():
+            raise HTTPException(status_code=400, detail="feedback is required for request_changes")
 
-        new_synthesis = interviewer.revise(
-            sme_name=sme.name if sme else "Unknown",
-            subject_name=subject.name if subject else "Unknown",
-            transcript=transcript,
-            uploaded_text=None,
-            previous_synthesis=interview.synthesis,
-            feedback=payload.feedback,
+        msgs = list(interview.messages or [])
+
+        sme_msg = {
+            "role": "user",
+            "content": payload.feedback,
+            "ts": datetime.utcnow().isoformat(),
+            "post_review": True,
+        }
+        msgs.append(sme_msg)
+
+        history = [{"role": m["role"], "content": m["content"]} for m in msgs]
+        reply = interviewer.next_message(
+            interview.sme.name,
+            interview.subject.name,
+            messages=history,
+            mode=interview.mode or "structured",
         )
 
-        # Unlink before delete to avoid FK constraint
-        interview.entry_id = None
-        interview.synthesis = new_synthesis
-        interview.synthesis_status = "pending_review"
+        reply_msg = {
+            "role": "assistant",
+            "content": reply,
+            "ts": datetime.utcnow().isoformat(),
+            "post_review": True,
+        }
+        msgs.append(reply_msg)
 
-        db.delete(entry)
-        db.add(interview)
+        interview.messages = msgs
+        interview.synthesis_status = "post_review_chat"
         db.commit()
-        return {"status": "revised", "interview_id": interview.id}
+        db.refresh(interview)
+        return {
+            "status": "post_review_chat",
+            "reply": reply,
+            "messages": msgs,
+            "entry_id": entry.id,
+            "interview_id": interview.id,
+        }
     raise HTTPException(status_code=400, detail="action must be approve, reject, or request_changes")

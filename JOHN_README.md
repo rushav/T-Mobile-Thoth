@@ -145,6 +145,8 @@ Format:
 
 ### Log
 
+[2026-04-30] [backend/routes/review.py, JOHN_README.md] — Updated the entry-based SME review route so `request_changes` no longer regenerates immediately; it now appends post-review chat messages to the linked interview, sets `post_review_chat`, and returns the conversation continuation state consistently with the interview review flow.
+
 [2026-04-30] [backend/agents/interviewer.py, backend/routes/interviews.py, frontend/src/pages/SMEDashboardPage.jsx, JOHN_README.md] — Changed SME "request changes" so feedback re-enters the interview as post-review chat instead of immediately revising the synthesis, tagged post-review turns in the transcript, added an explicit regenerate action in the dashboard, and documented the correct Uvicorn startup command from the repo root vs `backend/`.
 
 [2026-04-29] [frontend/src/pages/SMEDashboardPage.jsx, john_readme.md] — Added a profile-switch guard for active SME interviews and split the final interview state into distinct approved vs rejected completion screens, then updated the README checklist to mark those dashboard fixes complete.
