@@ -1,25 +1,24 @@
 import { useEffect, useRef, useState } from 'react'
 import ChatWindow from '../components/ChatWindow'
-import RoleHeader from '../components/RoleHeader'
-import { query, queryHistory, queryWithFile, currentProfile } from '../api'
+import TopBar from '../components/TopBar'
+import { query, queryHistory, queryWithFile } from '../api'
+import { useAuth } from '../auth'
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024
 const ACCEPT = '.pdf,.docx,.txt,.md,.png,.jpg,.jpeg'
 
 export default function UserChatPage() {
-  const [profile, setLocalProfile] = useState(currentProfile('user'))
+  const me = useAuth()
   const [messages, setMessages] = useState([])
   const [busy, setBusy] = useState(false)
-  const [pending, setPending] = useState(null) // { file, name } before send
+  const [pending, setPending] = useState(null)
   const [pendingErr, setPendingErr] = useState('')
   const fileRef = useRef(null)
 
-  // Distinct title so launch.sh's wmctrl pass can find this window
-  useEffect(() => { document.title = 'Thoth — User' }, [])
+  useEffect(() => { document.title = 'Thoth — Chat' }, [])
 
-  // Reload history whenever the active user changes.
   useEffect(() => {
-    if (!profile) { setMessages([]); return }
+    if (!me) { setMessages([]); return }
     queryHistory().then((rows) => {
       const hist = []
       for (const r of [...rows].reverse()) {
@@ -35,7 +34,7 @@ export default function UserChatPage() {
       }
       setMessages(hist)
     }).catch(() => setMessages([]))
-  }, [profile?.id])
+  }, [me?.id])
 
   const onPickFile = (e) => {
     const f = e.target.files?.[0]
@@ -56,7 +55,7 @@ export default function UserChatPage() {
   }
 
   const onSend = async (text) => {
-    const attachedAtSendTime = pending  // capture before clearing
+    const attachedAtSendTime = pending
     setMessages((m) => [...m, {
       role: 'user',
       content: text,
@@ -98,66 +97,57 @@ export default function UserChatPage() {
   }
 
   return (
-    <div className="flex flex-col h-full">
-      <RoleHeader role="user" onProfileChange={setLocalProfile} />
-      {!profile ? (
-        <div className="flex-1 flex items-center justify-center text-sm text-slate-500">
-          Pick or create a user profile in the header to start.
+    <div className="flex flex-col h-full bg-white">
+      <TopBar />
+      <div className="flex-1 min-h-0 max-w-3xl w-full mx-auto flex flex-col">
+        <div className="px-6 pt-4 pb-2">
+          <h2 className="text-lg font-semibold text-gray-900">Ask a question</h2>
+          <p className="text-xs text-gray-500">Thoth will route your question to the right subject expert.</p>
         </div>
-      ) : (
-        <div className="flex-1 min-h-0 max-w-3xl w-full mx-auto flex flex-col">
-          <div className="px-6 pt-4 pb-2">
-            <h2 className="text-lg font-semibold text-slate-800">Ask a question</h2>
-            <p className="text-xs text-slate-500">Thoth will route your question to the right subject agent.</p>
-          </div>
-          <div className="flex-1 min-h-0 flex flex-col">
-            <ChatWindow
-              messages={messages}
-              onSend={onSend}
-              busy={busy}
-              placeholder="e.g. How do I make pour-over coffee?"
-              composerExtras={
-                <>
-                  <input
-                    ref={fileRef}
-                    type="file"
-                    accept={ACCEPT}
-                    onChange={onPickFile}
-                    className="hidden"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => fileRef.current?.click()}
-                    title="Attach a file (PDF, docx, txt, image — max 5 MB)"
-                    className="rounded-md p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-                  >
-                    {/* Paperclip */}
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M21.44 11.05l-9.19 9.19a6 6 0 1 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 1 1-2.83-2.83l8.49-8.49"/>
-                    </svg>
-                  </button>
-                </>
-              }
-              composerAbove={
-                (pending || pendingErr) && (
-                  <div className="px-3 pt-2">
-                    {pending && (
-                      <span className="inline-flex items-center gap-2 text-xs bg-slate-100 border border-slate-200 rounded-full pl-3 pr-1 py-1 text-slate-700">
-                        <FileGlyph />
-                        <span className="truncate max-w-[16rem]">{pending.name}</span>
-                        <button onClick={clearPending} className="rounded-full hover:bg-slate-200 w-5 h-5 inline-flex items-center justify-center" aria-label="Remove">
-                          ×
-                        </button>
-                      </span>
-                    )}
-                    {pendingErr && <div className="text-xs text-rose-600 mt-1">{pendingErr}</div>}
-                  </div>
-                )
-              }
-            />
-          </div>
+        <div className="flex-1 min-h-0 flex flex-col">
+          <ChatWindow
+            messages={messages}
+            onSend={onSend}
+            busy={busy}
+            placeholder="e.g. What score gives a restaurant an A grade?"
+            composerExtras={
+              <>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept={ACCEPT}
+                  onChange={onPickFile}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  title="Attach a file (PDF, docx, txt, image — max 5 MB)"
+                  className="rounded-md p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21.44 11.05l-9.19 9.19a6 6 0 1 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 1 1-2.83-2.83l8.49-8.49"/>
+                  </svg>
+                </button>
+              </>
+            }
+            composerAbove={
+              (pending || pendingErr) && (
+                <div className="px-3 pt-2">
+                  {pending && (
+                    <span className="inline-flex items-center gap-2 text-xs bg-gray-100 border border-gray-200 rounded-full pl-3 pr-1 py-1 text-gray-700">
+                      <FileGlyph />
+                      <span className="truncate max-w-[16rem]">{pending.name}</span>
+                      <button onClick={clearPending} className="rounded-full hover:bg-gray-200 w-5 h-5 inline-flex items-center justify-center" aria-label="Remove">×</button>
+                    </span>
+                  )}
+                  {pendingErr && <div className="text-xs text-rose-600 mt-1">{pendingErr}</div>}
+                </div>
+              )
+            }
+          />
         </div>
-      )}
+      </div>
     </div>
   )
 }

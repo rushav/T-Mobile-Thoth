@@ -1,112 +1,91 @@
 import { useEffect, useRef, useState } from 'react'
-import ReactMarkdown from 'react-markdown'
 import ChatWindow from '../components/ChatWindow'
 import ReviewPanel from '../components/ReviewPanel'
-import RoleHeader from '../components/RoleHeader'
+import TopBar from '../components/TopBar'
 import {
-  currentProfile, setProfile,
   getProfile, getProfileSubjects, createSubject,
   startInterview, sendInterviewMessage,
   synthesizeInterview, reviewInterview, uploadFile, listInterviews,
   pendingForSme, reviewEntry,
   clearReviewRequest,
 } from '../api'
+import { useAuth, setUser } from '../auth'
 
-const POLL_MS = 5000
+const PINK = '#E20074'
 
 export default function SMEDashboardPage() {
-  const [me, setMe] = useState(currentProfile('sme'))
+  const me = useAuth()
+  const [meFull, setMeFull] = useState(me)
   const [tab, setTab] = useState('interview')
   const [selectedInterview, setSelectedInterview] = useState(null)
-  const activeInterviewRef = useRef({ interviewId: null, status: 'idle' })
 
-  // Distinct title so launch.sh's wmctrl pass can find this window
   useEffect(() => { document.title = 'Thoth — SME' }, [])
 
-  // Poll the active SME's profile so review-request flags appear within 5s
-  // even if the admin sets one in another tab.
+  // Pull the latest profile once on mount (review-request flag, etc.). No
+  // polling — single window, refresh manually if needed.
   useEffect(() => {
-    if (!me) return
+    if (!me?.id) return
     let cancelled = false
-    const tick = async () => {
-      try {
-        const p = await getProfile(me.id)
-        if (cancelled) return
-        setMe(p)
-        setProfile('sme', p)
-      } catch {}
-    }
-    tick()
-    const id = setInterval(tick, POLL_MS)
-    return () => { cancelled = true; clearInterval(id) }
+    getProfile(me.id).then(p => {
+      if (cancelled) return
+      setMeFull(p)
+      setUser(p)
+    }).catch(() => {})
+    return () => { cancelled = true }
   }, [me?.id])
 
   const dismissReview = async () => {
     try {
-      const p = await clearReviewRequest(me.id)
-      setMe(p)
-      setProfile('sme', p)
+      const p = await clearReviewRequest(meFull.id)
+      setMeFull(p)
+      setUser(p)
     } catch {}
   }
 
-  const handleProfileChange = (profile) => {
-    const { interviewId, status } = activeInterviewRef.current
-    if (interviewId !== null && status !== 'idle') {
-      const confirmed = window.confirm('You have an active interview in progress. Switching profiles will leave it behind. Continue?')
-      if (!confirmed) return
-    }
-    setMe(profile)
-  }
+  if (!meFull) return null
 
   return (
-    <div className="flex flex-col h-full">
-      <RoleHeader role="sme" onProfileChange={handleProfileChange} />
-      {!me ? (
-        <div className="flex-1 flex items-center justify-center text-sm text-slate-500">
-          Pick or create an SME profile in the header to start.
-        </div>
-      ) : (
-        <div className="flex-1 overflow-auto">
-          <div className="max-w-5xl mx-auto px-6 py-4">
-            {me.review_requested_at && (
-              <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 flex items-start justify-between gap-4">
-                <div>
-                  <div className="text-sm font-semibold text-amber-900">Review request from admin</div>
-                  <div className="text-sm text-amber-800 mt-0.5">
-                    {me.review_request_message || 'Admin has requested you review your knowledge entries for accuracy.'}
-                  </div>
-                  <div className="text-xs text-amber-700 mt-1">
-                    Requested {new Date(me.review_requested_at).toLocaleString()}
-                  </div>
+    <div className="flex flex-col h-full bg-white">
+      <TopBar />
+      <div className="flex-1 overflow-auto">
+        <div className="max-w-5xl mx-auto px-6 py-4">
+          {meFull.review_requested_at && (
+            <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 flex items-start justify-between gap-4">
+              <div>
+                <div className="text-sm font-semibold text-amber-900">Review request from admin</div>
+                <div className="text-sm text-amber-800 mt-0.5">
+                  {meFull.review_request_message || 'Admin has requested you review your knowledge entries for accuracy.'}
                 </div>
-                <button onClick={dismissReview} className="text-xs px-2 py-1 rounded border border-amber-300 hover:bg-amber-100">Dismiss</button>
+                <div className="text-xs text-amber-700 mt-1">
+                  Requested {new Date(meFull.review_requested_at).toLocaleString()}
+                </div>
               </div>
-            )}
-
-            <div className="flex gap-4 border-b mb-4">
-              <TabButton active={tab === 'interview'} onClick={() => setTab('interview')}>Interview</TabButton>
-              <TabButton active={tab === 'reviews'} onClick={() => setTab('reviews')}>Pending Reviews</TabButton>
-              <TabButton active={tab === 'history'} onClick={() => setTab('history')}>My Interviews</TabButton>
+              <button onClick={dismissReview} className="text-xs px-2 py-1 rounded border border-amber-300 hover:bg-amber-100">Dismiss</button>
             </div>
-            {tab === 'interview' && (
-              <InterviewTab
-                key={selectedInterview?.id ?? 'new'}
-                me={me}
-                activeInterviewRef={activeInterviewRef}
-                initialInterview={selectedInterview}
-                onNewInterview={() => { setSelectedInterview(null); setTab('interview') }}
-              />
-            )}
-            {tab === 'reviews' && <ReviewsTab me={me} />}
-            {tab === 'history' && (
-              <HistoryTab
-                me={me}
-                onSelectInterview={(iv) => { setSelectedInterview(iv); setTab('interview') }}
-              />
-            )}
+          )}
+
+          <div className="flex gap-4 border-b border-gray-200 mb-4">
+            <TabButton active={tab === 'interview'} onClick={() => setTab('interview')}>Interview</TabButton>
+            <TabButton active={tab === 'reviews'} onClick={() => setTab('reviews')}>Pending Reviews</TabButton>
+            <TabButton active={tab === 'history'} onClick={() => setTab('history')}>My Interviews</TabButton>
           </div>
+          {tab === 'interview' && (
+            <InterviewTab
+              key={selectedInterview?.id ?? 'new'}
+              me={meFull}
+              initialInterview={selectedInterview}
+              onNewInterview={() => { setSelectedInterview(null); setTab('interview') }}
+            />
+          )}
+          {tab === 'reviews' && <ReviewsTab me={meFull} />}
+          {tab === 'history' && (
+            <HistoryTab
+              me={meFull}
+              onSelectInterview={(iv) => { setSelectedInterview(iv); setTab('interview') }}
+            />
+          )}
         </div>
-      )}
+      </div>
     </div>
   )
 }
@@ -115,15 +94,16 @@ function TabButton({ active, onClick, children }) {
   return (
     <button
       onClick={onClick}
-      className={[
-        'px-4 py-2 text-sm font-medium border-b-2 -mb-px',
-        active ? 'border-teal-600 text-teal-700' : 'border-transparent text-slate-500 hover:text-slate-800',
-      ].join(' ')}
+      className="px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors"
+      style={{
+        borderColor: active ? PINK : 'transparent',
+        color: active ? PINK : '#64748b',
+      }}
     >{children}</button>
   )
 }
 
-function InterviewTab({ me, activeInterviewRef, initialInterview = null, onNewInterview }) {
+function InterviewTab({ me, initialInterview = null, onNewInterview }) {
   const [mySubjects, setMySubjects] = useState([])
   const [mode, setMode] = useState('structured')
   const [interviewId, setInterviewId] = useState(() => initialInterview?.id ?? null)
@@ -140,15 +120,13 @@ function InterviewTab({ me, activeInterviewRef, initialInterview = null, onNewIn
     if (initialInterview.synthesis_status === 'approved') return 'done_approved'
     if (initialInterview.synthesis_status === 'rejected') return 'done_rejected'
     return 'reviewing'
-  }) // idle | chatting | post_review_chatting | reviewing | done_approved | done_rejected
+  })
   const [subjectId, setSubjectId] = useState(() =>
     initialInterview ? String(initialInterview.subject_id) : ''
   )
   const fileRef = useRef(null)
-  const didMountRef = useRef(false)
   const [err, setErr] = useState('')
 
-  // New-subject form
   const [showNewSubject, setShowNewSubject] = useState(false)
   const [newSubjectName, setNewSubjectName] = useState('')
   const [newSubjectExpertise, setNewSubjectExpertise] = useState('')
@@ -159,31 +137,14 @@ function InterviewTab({ me, activeInterviewRef, initialInterview = null, onNewIn
       const subs = await getProfileSubjects(me.id)
       setMySubjects(subs)
       return subs
-    } catch (e) {
-      setErr(e.message)
-      return []
-    }
+    } catch (e) { setErr(e.message); return [] }
   }
 
-  useEffect(() => {
-    refreshMySubjects()
-    if (!didMountRef.current) {
-      didMountRef.current = true
-      return
-    }
-    // Reset interview state when the active SME changes.
-    setInterviewId(null); setMessages([]); setFiles([]); setSynthesis(null); setStatus('idle'); setSubjectId('')
-  }, [me.id])
-
-  useEffect(() => {
-    if (!activeInterviewRef) return
-    activeInterviewRef.current = { interviewId, status }
-  }, [activeInterviewRef, interviewId, status])
+  useEffect(() => { refreshMySubjects() }, [me.id])
 
   const start = async () => {
     if (!subjectId) return
-    setErr('')
-    setBusy(true)
+    setErr(''); setBusy(true)
     try {
       const r = await startInterview(me.id, Number(subjectId), mode)
       setInterviewId(r.interview_id)
@@ -240,8 +201,7 @@ function InterviewTab({ me, activeInterviewRef, initialInterview = null, onNewIn
   }
 
   const requestChanges = async (feedback) => {
-    setBusy(true)
-    setErr('')
+    setBusy(true); setErr('')
     try {
       const r = await reviewInterview(interviewId, 'request_changes', feedback)
       setMessages(r.messages)
@@ -250,8 +210,7 @@ function InterviewTab({ me, activeInterviewRef, initialInterview = null, onNewIn
   }
 
   const regenerate = async () => {
-    setSynthesizing(true)
-    setErr('')
+    setSynthesizing(true); setErr('')
     try {
       const r = await synthesizeInterview(interviewId)
       setSynthesis(r.synthesis)
@@ -271,10 +230,7 @@ function InterviewTab({ me, activeInterviewRef, initialInterview = null, onNewIn
         expertise: newSubjectExpertise.trim() || null,
       })
       await refreshMySubjects()
-      try {
-        const p = await getProfile(me.id)
-        setProfile('sme', p)
-      } catch {}
+      try { const p = await getProfile(me.id); setUser(p) } catch {}
       setSubjectId(String(created.id))
       setShowNewSubject(false)
       setNewSubjectName(''); setNewSubjectExpertise(''); setNewSubjectDesc('')
@@ -283,16 +239,12 @@ function InterviewTab({ me, activeInterviewRef, initialInterview = null, onNewIn
 
   if (status === 'idle') {
     return (
-      <div className="bg-white border rounded-lg p-6">
-        <h2 className="text-lg font-semibold text-slate-800 mb-4">Start a new interview</h2>
+      <div className="bg-white border border-gray-200 rounded-2xl p-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">Start a new interview</h2>
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <label className="block text-sm text-slate-700">Subject</label>
-            <button
-              type="button"
-              onClick={() => setShowNewSubject((v) => !v)}
-              className="text-sm text-teal-700 hover:text-teal-900"
-            >
+            <label className="block text-sm text-gray-700">Subject</label>
+            <button type="button" onClick={() => setShowNewSubject(v => !v)} className="text-sm hover:underline" style={{ color: PINK }}>
               {showNewSubject ? 'Cancel' : '+ New subject'}
             </button>
           </div>
@@ -300,69 +252,44 @@ function InterviewTab({ me, activeInterviewRef, initialInterview = null, onNewIn
             <select
               value={subjectId}
               onChange={(e) => setSubjectId(e.target.value)}
-              className="w-full rounded border border-slate-300 p-2 text-sm"
+              className="w-full rounded-md border border-gray-300 p-2 text-sm"
             >
               <option value="">— pick one of your subjects —</option>
-              {mySubjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              {mySubjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           )}
           {!showNewSubject && mySubjects.length === 0 && (
-            <div className="text-xs text-slate-500">
-              You don't have any subjects yet. Create one to start an interview.
-            </div>
+            <div className="text-xs text-gray-500">No subjects assigned yet — create one to start.</div>
           )}
 
           {showNewSubject && (
-            <form onSubmit={submitNewSubject} className="space-y-2 border rounded-md p-3 bg-slate-50">
+            <form onSubmit={submitNewSubject} className="space-y-2 border border-gray-200 rounded-md p-3 bg-gray-50">
               <div>
-                <label className="text-xs text-slate-600">Subject name</label>
-                <input value={newSubjectName} onChange={(e) => setNewSubjectName(e.target.value)} required
-                  placeholder="e.g. Climbing"
-                  className="mt-1 w-full rounded border border-slate-300 p-2 text-sm" />
+                <label className="text-xs text-gray-600">Subject name</label>
+                <input value={newSubjectName} onChange={e => setNewSubjectName(e.target.value)} required placeholder="e.g. Climbing" className="mt-1 w-full rounded border border-gray-300 p-2 text-sm" />
               </div>
               <div>
-                <label className="text-xs text-slate-600">Your expertise within this subject</label>
-                <input value={newSubjectExpertise} onChange={(e) => setNewSubjectExpertise(e.target.value)}
-                  placeholder="e.g. Sport Climbing"
-                  className="mt-1 w-full rounded border border-slate-300 p-2 text-sm" />
+                <label className="text-xs text-gray-600">Your expertise within this subject</label>
+                <input value={newSubjectExpertise} onChange={e => setNewSubjectExpertise(e.target.value)} placeholder="e.g. Sport Climbing" className="mt-1 w-full rounded border border-gray-300 p-2 text-sm" />
               </div>
               <div>
-                <label className="text-xs text-slate-600">Short description (optional)</label>
-                <input value={newSubjectDesc} onChange={(e) => setNewSubjectDesc(e.target.value)}
-                  className="mt-1 w-full rounded border border-slate-300 p-2 text-sm" />
+                <label className="text-xs text-gray-600">Short description (optional)</label>
+                <input value={newSubjectDesc} onChange={e => setNewSubjectDesc(e.target.value)} className="mt-1 w-full rounded border border-gray-300 p-2 text-sm" />
               </div>
-              <button type="submit" className="rounded bg-teal-700 text-white px-3 py-1.5 text-sm hover:bg-teal-800">
-                Create & select
-              </button>
+              <button type="submit" className="rounded-md text-white px-3 py-1.5 text-sm" style={{ backgroundColor: PINK }}>Create & select</button>
             </form>
           )}
 
           <div>
-            <label className="block text-sm text-slate-700 mb-1">Interview style</label>
+            <label className="block text-sm text-gray-700 mb-1">Interview style</label>
             <div className="grid grid-cols-2 gap-2">
-              <label className={`flex items-start gap-2 rounded border p-2 cursor-pointer ${mode === 'structured' ? 'border-teal-600 bg-teal-50' : 'border-slate-300'}`}>
-                <input type="radio" name="mode" value="structured" checked={mode === 'structured'} onChange={() => setMode('structured')} className="mt-1" />
-                <span>
-                  <div className="text-sm font-medium text-slate-800">Structured</div>
-                  <div className="text-xs text-slate-500">Thoth walks you through key facts → common questions → mistakes → escalation triggers.</div>
-                </span>
-              </label>
-              <label className={`flex items-start gap-2 rounded border p-2 cursor-pointer ${mode === 'freeform' ? 'border-teal-600 bg-teal-50' : 'border-slate-300'}`}>
-                <input type="radio" name="mode" value="freeform" checked={mode === 'freeform'} onChange={() => setMode('freeform')} className="mt-1" />
-                <span>
-                  <div className="text-sm font-medium text-slate-800">Freeform</div>
-                  <div className="text-xs text-slate-500">Share what you know; Thoth follows up only when something is unclear.</div>
-                </span>
-              </label>
+              <ModeOption value="structured" active={mode} onChange={setMode} title="Structured" desc="Thoth walks you through key facts → common questions → mistakes → escalation triggers." />
+              <ModeOption value="freeform"   active={mode} onChange={setMode} title="Freeform"   desc="Share what you know; Thoth follows up only when something is unclear." />
             </div>
           </div>
 
           {err && <div className="text-sm text-rose-600">{err}</div>}
-          <button
-            onClick={start}
-            disabled={!subjectId || busy}
-            className="rounded bg-teal-700 text-white px-4 py-2 text-sm font-medium hover:bg-teal-800 disabled:bg-slate-300"
-          >
+          <button onClick={start} disabled={!subjectId || busy} className="rounded-md text-white px-4 py-2 text-sm font-medium disabled:bg-gray-300" style={{ backgroundColor: !subjectId || busy ? undefined : PINK }}>
             Start interview
           </button>
         </div>
@@ -373,23 +300,23 @@ function InterviewTab({ me, activeInterviewRef, initialInterview = null, onNewIn
   if (status === 'done_approved' || status === 'done_rejected') {
     const rejected = status === 'done_rejected'
     return (
-      <div className="bg-white border rounded-lg p-6 text-center">
-        <div className="text-lg font-semibold text-slate-800 mb-2">
+      <div className="bg-white border border-gray-200 rounded-2xl p-6 text-center">
+        <div className="text-lg font-semibold text-gray-900 mb-2">
           {rejected ? 'Interview rejected' : 'Interview complete'}
         </div>
-        <p className={`text-sm mb-4 ${rejected ? 'text-rose-600' : 'text-slate-500'}`}>
+        <p className={`text-sm mb-4 ${rejected ? 'text-rose-600' : 'text-gray-500'}`}>
           {rejected
             ? 'This entry has been rejected. No further action will be taken.'
             : 'Successfully approved and queued for admin review.'}
         </p>
-        <button onClick={onNewInterview} className="rounded bg-teal-700 text-white px-4 py-2 text-sm font-medium hover:bg-teal-800">+ New Interview</button>
+        <button onClick={onNewInterview} className="rounded-md text-white px-4 py-2 text-sm font-medium" style={{ backgroundColor: PINK }}>+ New Interview</button>
       </div>
     )
   }
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-      <div className="lg:col-span-2 bg-white border rounded-lg overflow-hidden h-[70vh] flex flex-col">
+      <div className="lg:col-span-2 bg-white border border-gray-200 rounded-2xl overflow-hidden h-[70vh] flex flex-col">
         <ChatWindow
           messages={messages}
           onSend={onSend}
@@ -399,17 +326,17 @@ function InterviewTab({ me, activeInterviewRef, initialInterview = null, onNewIn
         />
       </div>
       <div className="space-y-4">
-        <div className="bg-white border rounded-lg p-4">
-          <h3 className="font-semibold text-slate-800 mb-2">Supporting files</h3>
+        <div className="bg-white border border-gray-200 rounded-2xl p-4">
+          <h3 className="font-semibold text-gray-900 mb-2">Supporting files</h3>
           <input ref={fileRef} type="file" onChange={onUpload} accept=".pdf,.docx,.txt,.md" className="text-sm" />
-          <ul className="mt-3 space-y-1 text-sm text-slate-700">
-            {files.map((f) => (
+          <ul className="mt-3 space-y-1 text-sm text-gray-700">
+            {files.map(f => (
               <li key={f.id} className="flex items-center justify-between">
                 <span>{f.filename}</span>
-                <span className="text-xs text-slate-400">{f.extracted_chars} chars</span>
+                <span className="text-xs text-gray-400">{f.extracted_chars} chars</span>
               </li>
             ))}
-            {files.length === 0 && <li className="text-xs text-slate-400">No files uploaded.</li>}
+            {files.length === 0 && <li className="text-xs text-gray-400">No files uploaded.</li>}
           </ul>
         </div>
 
@@ -417,21 +344,21 @@ function InterviewTab({ me, activeInterviewRef, initialInterview = null, onNewIn
           <button
             onClick={generate}
             disabled={synthesizing || messages.length < 2}
-            className="w-full rounded bg-emerald-600 text-white px-4 py-2 text-sm font-medium hover:bg-emerald-700 disabled:bg-slate-300 flex items-center justify-center gap-2"
+            className="w-full rounded-md text-white px-4 py-2 text-sm font-medium disabled:bg-gray-300 flex items-center justify-center gap-2"
+            style={{ backgroundColor: synthesizing || messages.length < 2 ? undefined : '#0f172a' }}
           >
             {synthesizing && <Spinner />}
             {synthesizing ? 'Generating summary…' : 'Generate summary'}
           </button>
         )}
         {status === 'post_review_chatting' && (
-          <div className="bg-white border rounded-lg p-4 space-y-3">
-            <p className="text-sm text-slate-600">
-              Add any missing context above, then regenerate when ready.
-            </p>
+          <div className="bg-white border border-gray-200 rounded-2xl p-4 space-y-3">
+            <p className="text-sm text-gray-600">Add any missing context above, then regenerate when ready.</p>
             <button
               onClick={regenerate}
               disabled={synthesizing}
-              className="w-full rounded bg-emerald-600 text-white px-4 py-2 text-sm font-medium hover:bg-emerald-700 disabled:bg-slate-300 flex items-center justify-center gap-2"
+              className="w-full rounded-md text-white px-4 py-2 text-sm font-medium disabled:bg-gray-300 flex items-center justify-center gap-2"
+              style={{ backgroundColor: synthesizing ? undefined : '#0f172a' }}
             >
               {synthesizing && <Spinner />}
               {synthesizing ? 'Regenerating…' : 'Regenerate Summary'}
@@ -455,10 +382,21 @@ function InterviewTab({ me, activeInterviewRef, initialInterview = null, onNewIn
   )
 }
 
-function Spinner() {
+function ModeOption({ value, active, onChange, title, desc }) {
+  const selected = active === value
   return (
-    <span className="inline-block w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+    <label className={`flex items-start gap-2 rounded-lg border p-2 cursor-pointer ${selected ? 'border-[#E20074] bg-pink-50' : 'border-gray-300'}`}>
+      <input type="radio" name="mode" value={value} checked={selected} onChange={() => onChange(value)} className="mt-1" />
+      <span>
+        <div className="text-sm font-medium text-gray-900">{title}</div>
+        <div className="text-xs text-gray-500">{desc}</div>
+      </span>
+    </label>
   )
+}
+
+function Spinner() {
+  return <span className="inline-block w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
 }
 
 function HistoryTab({ me, onSelectInterview }) {
@@ -468,8 +406,7 @@ function HistoryTab({ me, onSelectInterview }) {
 
   useEffect(() => {
     if (!me) return
-    setBusy(true)
-    setErr('')
+    setBusy(true); setErr('')
     listInterviews(me.id)
       .then(setInterviews)
       .catch(() => setErr('Failed to load interviews'))
@@ -497,7 +434,7 @@ function HistoryTab({ me, onSelectInterview }) {
     <div className="overflow-x-auto p-4">
       <table className="w-full text-sm">
         <thead>
-          <tr className="text-left text-gray-500 border-b">
+          <tr className="text-left text-gray-500 border-b border-gray-200">
             <th className="pb-2 pr-4">Date</th>
             <th className="pb-2 pr-4">Subject</th>
             <th className="pb-2 pr-4">Mode</th>
@@ -515,17 +452,11 @@ function HistoryTab({ me, onSelectInterview }) {
               ? new Date(iv.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
               : '—'
             return (
-              <tr
-                key={iv.id}
-                onClick={() => onSelectInterview(iv)}
-                className="border-b hover:bg-gray-50 cursor-pointer"
-              >
+              <tr key={iv.id} onClick={() => onSelectInterview(iv)} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer">
                 <td className="py-2 pr-4 whitespace-nowrap">{date}</td>
                 <td className="py-2 pr-4">{iv.subject_name ?? '—'}</td>
                 <td className="py-2 pr-4 capitalize">{iv.mode}</td>
-                <td className="py-2 pr-4">
-                  <span className={`text-${color}-600 font-medium`}>{text}</span>
-                </td>
+                <td className="py-2 pr-4"><span className={`text-${color}-600 font-medium`}>{text}</span></td>
                 <td className="py-2 text-gray-500">{preview}</td>
               </tr>
             )
@@ -546,11 +477,7 @@ function ReviewsTab({ me }) {
     try { setRows(await pendingForSme(me.id)) } catch (e) { setErr(e.message) }
   }
 
-  useEffect(() => {
-    refresh()
-    const id = setInterval(refresh, POLL_MS)
-    return () => clearInterval(id)
-  }, [me.id])
+  useEffect(() => { refresh() }, [me.id])
 
   const act = async (entry_id, action, feedback = undefined) => {
     setBusy(true)
@@ -563,12 +490,12 @@ function ReviewsTab({ me }) {
   return (
     <div className="space-y-3">
       {err && <div className="text-sm text-rose-600">{err}</div>}
-      {rows.length === 0 && <div className="text-sm text-slate-500">No pending entries for your subjects.</div>}
-      {rows.map((r) => (
-        <div key={r.id} className="bg-white border rounded-lg p-4">
+      {rows.length === 0 && <div className="text-sm text-gray-500">No pending entries for your subjects.</div>}
+      {rows.map(r => (
+        <div key={r.id} className="bg-white border border-gray-200 rounded-2xl p-4">
           <div className="mb-3">
-            <div className="font-semibold text-slate-800">{r.title}</div>
-            <div className="text-xs text-slate-500">{r.subject_name} · contributed by {r.contributor_name || 'unknown'}</div>
+            <div className="font-semibold text-gray-900">{r.title}</div>
+            <div className="text-xs text-gray-500">{r.subject_name} · contributed by {r.contributor_name || 'unknown'}</div>
           </div>
           <ReviewPanel
             synthesis={r.content}

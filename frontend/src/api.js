@@ -1,40 +1,9 @@
+import { currentUser } from './auth'
+
 const BASE = ''  // Vite proxy forwards /api to :8000
 
-const ROLE_FROM_PATH = [
-  ['/user', 'user'],
-  ['/sme', 'sme'],
-  ['/admin', 'admin'],
-  ['/support', 'support'],
-]
-
-export function currentRole() {
-  const path = (typeof window !== 'undefined' ? window.location.pathname : '') || ''
-  for (const [prefix, role] of ROLE_FROM_PATH) {
-    if (path === prefix || path.startsWith(prefix + '/')) return role
-  }
-  return null
-}
-
-function profileKey(role) {
-  return `thoth.profile.${role}`
-}
-
-export function currentProfile(role = currentRole()) {
-  if (!role) return null
-  try {
-    const raw = localStorage.getItem(profileKey(role))
-    return raw ? JSON.parse(raw) : null
-  } catch { return null }
-}
-
-export function setProfile(role, p) {
-  if (!role) return
-  if (p) localStorage.setItem(profileKey(role), JSON.stringify(p))
-  else localStorage.removeItem(profileKey(role))
-}
-
 function profileHeaders() {
-  const p = currentProfile()
+  const p = currentUser()
   return p ? { 'X-Profile-Id': String(p.id) } : {}
 }
 
@@ -118,7 +87,7 @@ export const adminDirectory = () => apiGet('/api/admin/directory')
 export const adminRequestReview = (sme_id, admin_id, message) =>
   apiPost('/api/admin/request-review', { sme_id, admin_id, message })
 
-// Files (SME-side, attached to interviews)
+// Files
 export function uploadFile(file, { interview_id, entry_id } = {}) {
   const fd = new FormData()
   fd.append('file', file)

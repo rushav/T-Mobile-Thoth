@@ -3,11 +3,13 @@
 Run from the backend/ directory:
     python3 seed.py
 
-The data here is intentionally fictional and absurdly specific. If an SME agent
-answers a test query with these exact details (37.2°C, 88.4 degrees, #7B3F9E,
-"clinkmarks", etc.) we know it is using the database. If it returns plausible
-real-world content instead, we have caught a hallucination — the RAG scoping
-or system prompt constraints need to be tightened.
+The five SMEs below are realistic small-business consultants. Their entries
+contain precise numbers, fees, deadlines, and procedures — exactly the kind of
+content a general LLM is most likely to confabulate. If an SME agent answers a
+test query with these specific values (e.g. $1,160,000 Section 179 limit, 88.4
+nothing — that's the giveaway from the old fictional seed; here we use real
+codes and rates) we know it is using the database. Wrong but plausible
+numbers signal hallucination — tighten the RAG scoping or system prompts.
 """
 import sys
 import uuid as _uuid
@@ -22,250 +24,443 @@ from services import knowledge as knowledge_svc
 import vector_store
 
 
+# ── Subjects (one per SME's specialization) ───────────────────────────────────
 SUBJECTS = [
-    ("Zorblatt Crystals", "Cultivation, grading, and handling of Zorblatt Crystals"),
-    ("Flumgarten Diplomacy", "Trade protocols, greetings, and customs of the Flumgarten people"),
-    ("Reverse Plumbing", "Upward water flow systems using Wrench Valves and Contradictory Pipes"),
+    ("Food Safety & Health Inspections", "Restaurant inspection protocols, temperature control standards, and violation classification."),
+    ("Commercial Real Estate Leasing", "Lease negotiations, CAM charges, and tenant improvement allowances."),
+    ("Workplace Ergonomics & Injury Prevention", "Workstation assessment, repetitive strain prevention, and OSHA compliance."),
+    ("Small Business Tax Compliance", "Quarterly filing requirements, business deductions, and entity selection."),
+    ("Environmental Compliance for Small Businesses", "Hazardous waste disposal, air quality permits, and water discharge requirements."),
 ]
 
-# (name, subject, expertise area, contact info)
+# (name, subject_name, expertise_area, contact_email, sub_areas)
 SMES = [
-    ("Dr. Helga Voss", "Zorblatt Crystals", "Zorblatt Cultivation", "zorblatt@test.thoth.dev"),
-    ("Ambassador Rex Tillby", "Flumgarten Diplomacy", "Flumgarten Trade Protocols", "flumgarten@test.thoth.dev"),
-    ("Chief Engineer Mona Wrench", "Reverse Plumbing", "Upward Water Flow Systems", "reverse@test.thoth.dev"),
+    (
+        "Dr. Sarah Chen",
+        "Food Safety & Health Inspections",
+        "Food Safety & Health Inspections",
+        "s.chen@foodsafety-consultants.com",
+        ["Restaurant inspection protocols", "Temperature control standards", "Violation classification"],
+    ),
+    (
+        "Marcus Williams",
+        "Commercial Real Estate Leasing",
+        "Commercial Real Estate Leasing",
+        "m.williams@cre-advisors.net",
+        ["Lease negotiations", "CAM charges", "Tenant improvement allowances"],
+    ),
+    (
+        "Dr. Priya Patel",
+        "Workplace Ergonomics & Injury Prevention",
+        "Workplace Ergonomics & Injury Prevention",
+        "p.patel@ergoworks-consulting.com",
+        ["Workstation assessment", "Repetitive strain prevention", "OSHA compliance"],
+    ),
+    (
+        "James Ortega",
+        "Small Business Tax Compliance",
+        "Small Business Tax Compliance",
+        "j.ortega@taxnavigator.com",
+        ["Quarterly filing requirements", "Business deductions", "Entity type selection"],
+    ),
+    (
+        "Dr. Nina Kowalski",
+        "Environmental Compliance for Small Businesses",
+        "Environmental Compliance for Small Businesses",
+        "n.kowalski@greencomply.org",
+        ["Waste disposal regulations", "Air quality permits", "Water discharge requirements"],
+    ),
 ]
 
 USERS = ["Alex Rivera", "Jordan Lee"]
-ADMINS = [("Pat Morgan", "pat.morgan@gix.edu")]
+ADMINS = [("Pat Morgan", "pat.morgan@thoth.demo")]
 
 
+# ── Knowledge entries (2 per SME) ─────────────────────────────────────────────
 KNOWLEDGE = {
-    "Zorblatt Crystals": [
+    "Food Safety & Health Inspections": [
         (
-            "How to grow Zorblatt Crystals",
-            """**Topic**: Cultivating Zorblatt Crystals from nucleation to harvest
+            "Restaurant Health Inspection Scoring System",
+            """**Topic**: Municipal Food Safety Bureau 100-point demerit inspection system
 
 **Key Information**:
-- Zorblatt Crystals are cultivated in darkness at exactly 37.2°C.
-- Growth medium is a mixture of 3 parts lunar sand and 1 part distilled echo water.
-- The full growth cycle takes exactly 14.7 days.
-- Days 1-5 (the Murmur Phase): the crystals emit a low hum at 42Hz. This is normal and indicates healthy nucleation.
-- On day 6, you must rotate the cultivation vessel 90 degrees counterclockwise. Failure to rotate results in "flat zorblatt," which has no commercial value.
-- Days 7-12 (the Shimmer Phase): require complete silence. Any sound above 15 decibels will cause fracturing.
-- On day 13, introduce exactly 4 drops of tannin-9 solution.
-- On day 14.7, harvest using ceramic tongs only — metal tongs cause immediate discoloration.
+The Municipal Food Safety Bureau uses a 100-point demerit system. Each inspection starts at 100 points; violations deduct points.
+
+Grades:
+- 90-100: A grade (green placard)
+- 80-89:  B grade (yellow placard)
+- 70-79:  C grade (orange placard)
+- Below 70: mandatory closure and reinspection within 72 hours
+
+Critical violations (immediate health risk) — 5 points each:
+- Food held in the temperature danger zone (41°F - 135°F / 5°C - 57°C) for more than 2 hours
+- No certified food handler on premises during operating hours
+- Evidence of active pest infestation (rodent droppings, live cockroaches in food prep areas)
+- Cross-contamination between raw proteins and ready-to-eat foods
+- Handwashing station not accessible or not stocked with soap
+
+Major violations — 3 points each:
+- Improper cooling procedures (food not cooled from 135°F to 70°F within 2 hours, then to 41°F within 4 additional hours)
+- Cutting boards not color-coded (red for raw meat, green for produce, blue for fish, yellow for poultry, white for dairy)
+- Thermometers not calibrated within the last 30 days
+- Employee health policy documentation missing
+
+Minor violations — 1 point each:
+- Ceiling tiles stained but not actively deteriorating
+- Light shields missing over food prep areas
+- Floor grout discoloration in non-food-prep areas
+
+Reinspection fees: First reinspection within 30 days is free. Second reinspection costs $275. Third reinspection costs $450 and triggers a formal review hearing.
 
 **Common Questions**:
-Q: What temperature kills Zorblatt Crystals? A: Anything above 41°C causes irreversible lattice collapse. Below 30°C they enter dormancy but can be revived.
-Q: Can I use regular sand instead of lunar sand? A: No. Regular sand contains silica impurities that bond with the echo water and produce toxic fumes called "Voss Vapor."
-Q: How do I know if my Zorblatt is healthy? A: Healthy crystals are exactly the color #7B3F9E (a specific purple). Any deviation toward blue means over-hydration. Toward red means tannin deficiency.
-
-**Edge Cases**:
-- If a crystal develops a "double helix fracture" pattern, it is actually more valuable than a perfect crystal. These are called "Helga Twins" and are used in advanced resonance chambers.
+Q: How often are routine inspections? A: Twice per year for full-service restaurants, once per year for limited-service establishments (pre-packaged food only). New restaurants receive their first inspection within 14 days of opening.
+Q: Can I appeal a violation? A: Yes, within 10 business days by submitting Form FSB-7A to the Municipal Review Board. The appeal hearing is scheduled within 21 days. During appeal, the violation remains on record but point deductions are suspended.
 
 **When to Escalate**:
-Any crystal showing green discoloration must be reported immediately — this indicates Compound-X contamination.
+A score below 70 triggers mandatory closure. Anything that suggests intentional violation or repeat critical findings should be referred to the Municipal Review Board.
 """,
         ),
         (
-            "Zorblatt Crystal grading system",
-            """**Topic**: The Voss Scale and certification of Zorblatt Crystals
+            "Cold Chain Compliance for Food Deliveries",
+            """**Topic**: Cold-chain receiving requirements under Municipal Code Section 4.7.3
 
 **Key Information**:
-- Zorblatt Crystals are graded on the Voss Scale from Z1 (lowest) to Z7 (highest).
-- Z1-Z3 are industrial grade, used for basic resonance filtering.
-- Z4-Z5 are commercial grade, used in standard echo chambers.
-- Z6 is research grade, used only in Murmur Laboratories.
-- Z7 has only been achieved 3 times in recorded history. The most recent was by Dr. Voss herself in 2019 using the "Triple Rotation Method," where the vessel is rotated on days 6, 9, and 12.
-- Grading is determined by three factors:
-  1. Clarity, measured in Voss Units (0-100).
-  2. Resonance frequency, which must be within 42Hz ± 0.3Hz.
-  3. Lattice density, measured by dropping the crystal from exactly 1 meter onto a ceramic plate. Z7 crystals produce exactly 3 bounces.
-- A crystal cannot be regraded once certified.
-- Certification requires two independent Zorblatt Assessors using calibrated Voss Meters (model VM-7 or higher).
+All food deliveries must maintain cold chain integrity per Municipal Code Section 4.7.3.
+- Refrigerated items must arrive at 41°F (5°C) or below.
+- Frozen items must arrive at 0°F (-18°C) or below.
+- The receiving employee must use a calibrated probe thermometer (not infrared) on at least one item per delivery category.
+
+Documentation:
+Each delivery must be logged in the Cold Chain Receiving Log (Form CCR-2) with: supplier name, delivery time, ambient truck temperature, product temperature reading, employee initials, and lot numbers for all protein products.
+
+Rejected deliveries:
+- If any item exceeds safe temperature by more than 5°F, the entire delivery category must be rejected.
+- The supplier must be notified in writing within 24 hours using Form CCR-3 (Delivery Rejection Notice).
+- Three rejected deliveries from the same supplier within 6 months triggers a mandatory supplier audit.
+
+Temperature abuse documentation:
+If an item arrives between 41°F and 46°F, the restaurant may accept it ONLY if it can be cooled to 41°F within 1 hour AND this decision is documented with the shift manager's signature on Form CCR-2.
 
 **Common Questions**:
-Q: How do I get a Z7 grading? A: You almost certainly will not. Only three Z7 crystals have ever been certified. The Triple Rotation Method (rotations on days 6, 9, and 12) is required but not sufficient.
-Q: What's the minimum Voss Meter model for certification? A: VM-7 or higher. Earlier models cannot resolve the 42Hz ± 0.3Hz tolerance.
-
-**Edge Cases**:
-- Industrial-grade Z1-Z3 crystals do not require two assessors — a single licensed assessor may certify them.
+Q: Can I use an infrared thermometer? A: No. Cold-chain receiving requires a calibrated probe thermometer reading the internal temperature of the product.
+Q: What if I accept a borderline-temperature delivery? A: Only acceptable for items 41-46°F that can be cooled to 41°F within 1 hour, and only with shift-manager sign-off on Form CCR-2.
 
 **When to Escalate**:
-Disputes about grading outcomes must be referred to a Murmur Laboratory arbitration panel.
-""",
-        ),
-    ],
-    "Flumgarten Diplomacy": [
-        (
-            "The Seven Rules of Flumgarten Trade",
-            """**Topic**: The Tillby Accords governing Flumgarten trade
-
-**Key Information**:
-Flumgarten trade operates under the Tillby Accords, ratified in the Year of the Brass Moth (equivalent to 2003). There are exactly seven rules:
-1. No trade may occur on a Glumsday (every 9th day of the Flumgarten calendar).
-2. All goods must be weighed using the Pendleton Scale, which measures in "droffs" (1 droff = approximately 2.37 Earth grams).
-3. The buyer always speaks first. If the seller speaks first, the transaction is void and both parties must exchange hats as a sign of mutual embarrassment.
-4. Prices are set in "clinkmarks." The exchange rate fluctuates based on the Murmur Index, a proprietary index that Ambassador Tillby personally recalculates every Glumsday.
-5. Fragile goods must be wrapped in exactly 3 layers of thimble-silk. Two layers is considered an insult. Four layers implies the buyer is clumsy.
-6. Disputes are resolved by the Flumgarten Arbiter, who is always a retired pastry chef. This tradition dates back to the Great Flour Conflict of 1847.
-7. All trade agreements expire at the sound of the Evening Chime and must be re-signed the following morning. No exceptions.
-
-**Common Questions**:
-Q: What happens if you break Rule 3? A: Both parties must exchange hats and wait 48 hours before attempting the trade again. The hat exchange is permanent — you don't get your hat back.
-Q: How many clinkmarks to a dollar? A: This is unknowable to outsiders. The Murmur Index is classified. Ambassador Tillby can provide estimates on a case-by-case basis.
-Q: How many layers of thimble-silk should I use for fragile goods? A: Exactly 3. Two is an insult, four implies the buyer is clumsy.
-
-**Edge Cases**:
-- Rule 7 is suspended during the Festival of Quiet Hammers (held once every 4 years), during which trades can persist for up to 72 hours.
-
-**When to Escalate**:
-Disputes that cannot be resolved by the Flumgarten Arbiter (the retired pastry chef) must be referred directly to Ambassador Tillby.
-""",
-        ),
-        (
-            "Flumgarten greeting protocols",
-            """**Topic**: Correct greetings, seating, and gift-giving with Flumgarten dignitaries
-
-**Key Information**:
-- The correct greeting sequence when meeting a Flumgarten dignitary:
-  1. Tap your left shoulder twice.
-  2. Say "Brellish mundavar" (roughly translates to "I acknowledge your hat").
-  3. Wait for them to tap their right knee once.
-  4. Then, and only then, may you shake hands — but only with the left hand.
-- Right-handed handshakes are a declaration of competitive intent and may trigger a Formal Glaring Contest.
-- At formal dinners, seating is determined by hat height. The tallest hat sits nearest the Arbiter. If two guests have hats of equal height, they must sit back-to-back, which is considered a great honor.
-- Gifts are always given in odd numbers. An even number of gifts implies the giver believes the recipient cannot count.
-- The most valued gift is a small brass moth figurine, which symbolizes patience and poor eyesight (both considered virtues in Flumgarten culture).
-
-**Common Questions**:
-Q: What does "Brellish mundavar" mean? A: It roughly translates to "I acknowledge your hat" and is the standard greeting phrase.
-Q: Why can't I use my right hand for the handshake? A: A right-handed handshake is a declaration of competitive intent and may trigger a Formal Glaring Contest.
-Q: How many gifts should I bring? A: Always an odd number. Even-numbered gifts imply the giver believes the recipient cannot count.
-
-**Edge Cases**:
-- If two guests at a formal dinner have hats of identical height, sitting back-to-back is required and is regarded as an honor, not a slight.
-
-**When to Escalate**:
-Any incident that escalates to a Formal Glaring Contest should be referred to Ambassador Tillby for de-escalation.
+Three rejected deliveries from one supplier in 6 months triggers a supplier audit through the Bureau.
 """,
         ),
     ],
-    "Reverse Plumbing": [
+
+    "Commercial Real Estate Leasing": [
         (
-            "Principles of Reverse Plumbing",
-            """**Topic**: The Wrench Paradox and core components of an RP system
+            "Understanding CAM Charges in Commercial Leases",
+            """**Topic**: Common Area Maintenance (CAM) charges, calculation, exclusions, and reconciliation
 
 **Key Information**:
-- Reverse Plumbing (RP) is the science of making water flow upward without mechanical pumps, using a network of Wrench Valves and Contradictory Pipes.
-- The key principle is the Wrench Paradox: "Water will flow upward if it doesn't know it's going upward."
-- Pipes must be installed at exactly 88.4 degrees. NOT 90 degrees — truly vertical pipes "know" they're vertical and the water refuses to cooperate.
-- A basic RP system requires four components:
-  1. A Confusion Chamber at the base, where water enters through 7 inlets simultaneously so it loses directional awareness.
-  2. Contradictory Pipes made from left-handed copper (copper mined from the southern hemisphere, which has a reversed molecular spiral).
-  3. Wrench Valves every 3 meters, which briefly spin the water counterclockwise to maintain its disorientation.
-  4. A Reassurance Tank at the top, which gently decelerates the water so it doesn't panic.
-- Flow rates in RP systems are measured in "bewilders per minute" (BPM).
-- Residential systems run at 12 BPM. Commercial systems can reach 45 BPM but require quarterly recalibration by a certified Reverse Plumber (license class RP-3 or higher).
+A tenant's CAM share is calculated as:
+  (Tenant's Leased Square Footage ÷ Total Building Leasable Square Footage) × Total CAM Expenses
+
+Standard CAM inclusions:
+- Property taxes
+- Building insurance
+- Landscaping and snow removal
+- Parking lot maintenance and restriping (every 18-24 months)
+- Common area utilities
+- Elevator maintenance (multi-story buildings)
+- Fire suppression system inspection (quarterly per NFPA 25)
+- Security services
+- Property management fees (typically 3-6% of gross rental income)
+
+Standard CAM exclusions (negotiate into the lease):
+- Capital expenditures over $10,000
+- Structural repairs (roof, foundation, load-bearing walls)
+- Environmental remediation costs
+- Vacant-space marketing costs
+- Landlord legal fees
+
+Reconciliation:
+- Monthly CAM payments are estimated from the prior year's actual expenses.
+- The landlord must provide a CAM reconciliation statement within 90 days of year-end.
+- Overpayments credit against future rent. Underpayments are due within 30 days.
+- Tenants have the right to audit CAM statements within 12 months of receipt.
 
 **Common Questions**:
-Q: What happens if the water "figures out" it's going up? A: This is called a "Clarity Event." The water immediately reverses direction at high speed. This is why all RP systems have emergency Confusion Chambers every 5 floors.
-Q: Can I use regular copper pipes? A: Absolutely not. Regular (right-handed) copper creates a "truth field" that makes the water aware of gravity. The water will not only refuse to flow upward, it may flow downward faster than normal out of spite.
-Q: What angle should the pipes be installed at? A: Exactly 88.4 degrees. 90 degrees does not work — truly vertical pipes "know" they're vertical.
-Q: What is a bewilder per minute? A: BPM is the standard flow rate unit for RP systems. Residential = 12 BPM, commercial = up to 45 BPM.
-
-**Edge Cases**:
-- In the southern hemisphere, you must use right-handed copper (mined from the northern hemisphere) because the reversed molecular spiral is already reversed, making it a double-reverse, which is equivalent to left-handed copper in the north.
+Q: What CAM cap should I negotiate? A: 3-5% annual increase maximum. Without a cap, charges can spike if the landlord adds services or raises management fees.
+Q: Can the landlord roll capital expenditures into CAM? A: Standard practice excludes capex over $10,000 — but only if you negotiate the exclusion into the lease. Many landlord-form leases include capex by default.
 
 **When to Escalate**:
-Any system operating above 60 BPM requires an RP-4 licensed Reverse Plumber. There are only 12 such individuals worldwide.
+Disputes over CAM reconciliation that can't be resolved with the landlord within 60 days should be referred to a commercial real estate attorney before the 12-month audit window closes.
 """,
         ),
         (
-            "Troubleshooting common RP system failures",
-            """**Topic**: Diagnosing and resolving common Reverse Plumbing failures
+            "Tenant Improvement Allowances (TIA)",
+            """**Topic**: Tenant Improvement Allowances — market rates, amortization, and negotiation
 
 **Key Information**:
-- Problem: Water stops flowing.
-  Cause: Likely a Clarity Event in one of the Contradictory Pipes.
-  Solution: Activate the nearest Confusion Chamber and wait 7 minutes for the water to forget.
+A Tenant Improvement Allowance (TIA) is a per-square-foot dollar amount the landlord provides for the tenant to customize their space.
 
-- Problem: Water flows sideways.
-  Cause: The Wrench Valve is installed upside-down, causing "Lateral Bewilderment."
-  Solution: Rotate the valve 180 degrees. Do NOT remove it while water is flowing — sideways water under pressure can cut through drywall.
+Current market rates:
+- Class A office (urban):    $45-$75 per square foot
+- Class A office (suburban): $25-$45 per square foot
+- Retail spaces:             $15-$35 per square foot
 
-- Problem: Gurgling sounds from pipes.
-  Cause: The water is "asking questions." This is a pre-Clarity Event warning.
-  Solution: Immediately reduce flow to under 5 BPM and add 200ml of Wrench Solution (a proprietary liquid that Chief Engineer Wrench describes as "basically just very confused water") to the nearest Confusion Chamber.
+TIA economics:
+TIA is not free money — it's amortized into the base rent over the lease term. A $50/sf TIA on a 5-year lease at 7% interest adds approximately $0.99/sf/month to base rent. Always calculate effective rent (base rent + amortized TIA) when comparing offers.
 
-- Problem: Water smells like pennies.
-  Cause: You accidentally used right-handed copper somewhere.
-  Solution: Find and replace the offending pipe. The smell will persist for 48 hours even after replacement — this is the water "remembering."
+Key negotiation points:
+- Require that unused TIA can be applied to rent reduction (not forfeited).
+- Negotiate that improvements become tenant's property to avoid "above-standard" removal costs at lease end.
+- Request a 60-day construction-period rent abatement (start paying rent only when build-out is complete).
+- For specialized infrastructure (restaurants, medical offices), negotiate higher TIA by offering a longer lease term — typically an additional $5-10/sf per additional year committed.
 
-**Certification levels**:
-- RP-1: observation only.
-- RP-2: Confusion Chamber maintenance.
-- RP-3: full system service.
-- RP-4: experimental systems operating above 60 BPM. Held by only 12 people worldwide, including Chief Engineer Wrench.
+Disbursement methods:
+- Lump sum upfront — best for tenant, risky for landlord
+- Progress payments against invoices — most common
+- Reimbursement after completion — worst for tenant cash flow
 
 **Common Questions**:
-Q: What should I do if I hear gurgling? A: This is a pre-Clarity Event warning. Reduce flow to under 5 BPM and add 200ml of Wrench Solution to the nearest Confusion Chamber.
-Q: Can I service an RP system with an RP-1 license? A: No. RP-1 only allows observation. Service requires RP-3 or higher.
-
-**Edge Cases**:
-- The penny-smell from right-handed copper contamination persists 48 hours after the pipe is replaced. This is normal and does not indicate ongoing contamination.
+Q: Is TIA free? A: No. It's amortized into base rent over the lease term. Always compare effective rent.
+Q: How much TIA should I expect for a restaurant? A: Specialized spaces command higher TIA — extend the lease term to push it up by $5-10/sf per additional year committed.
 
 **When to Escalate**:
-Any system operating above 60 BPM, or any failure that does not match one of the diagnoses above, requires an RP-4 licensed engineer.
+Disbursement disputes after construction milestones should be referred to a commercial real estate attorney before any deadline triggers a default.
+""",
+        ),
+    ],
+
+    "Workplace Ergonomics & Injury Prevention": [
+        (
+            "Workstation Ergonomic Assessment Protocol",
+            """**Topic**: The ERGO-7 workstation assessment checklist (National Ergonomics Institute)
+
+**Key Information**:
+The ERGO-7 checklist developed by Dr. Patel's research team:
+
+1. Monitor position: Top of screen at or slightly below eye level. Distance: arm's length (20-26 inches). Tilt: 10-20° backward. For dual monitors, primary directly ahead, secondary angled 30° to the dominant side.
+
+2. Chair height: Feet flat on floor (or footrest), thighs parallel to floor, 90-110° angle at knees. Seat depth should leave 2-3 fingers between front edge and back of knee (the "fist rule").
+
+3. Keyboard: Elbows at 90-100°, wrists neutral. Keyboard tray 1-2 inches below elbow height. Negative tilt (front higher than back) reduces wrist extension strain by 28% vs. positive tilt — the single most impactful adjustment for preventing carpal tunnel.
+
+4. Mouse: Immediately adjacent to keyboard at the same height. A mouse 6+ inches from the keyboard increases shoulder strain by 45%. Mouse size by hand measurement (wrist crease to ring fingertip): under 17 cm = small, 17-19 cm = medium, over 19 cm = large.
+
+5. Lighting: 300-500 lux for computer work, 500-750 lux for paper reading. Monitor perpendicular to windows. The "hand shadow test": hold your hand 12 inches above the desk — hard-edged shadow means lighting is too direct and will cause glare fatigue.
+
+6. Break protocol: 20-20-20 rule (every 20 minutes, look 20 feet away for 20 seconds) PLUS a 5-minute standing/walking break every 45 minutes. Compliance reduces reported musculoskeletal discomfort by 62% over 12 weeks.
+
+7. Document holder: If referencing paper, use a holder positioned between monitor and keyboard, angled 30-45°, at the same distance as the monitor.
+
+**Common Questions**:
+Q: What is the single most impactful adjustment? A: Negative keyboard tilt — reduces wrist extension strain by 28% vs. positive tilt. This is the leading carpal-tunnel preventer.
+Q: How far should the mouse be from the keyboard? A: Immediately adjacent. Six or more inches away increases shoulder strain by 45%.
+
+**When to Escalate**:
+Persistent discomfort after a complete ERGO-7 adjustment should trigger an RSI evaluation (see entry on Patel Scale).
+""",
+        ),
+        (
+            "Repetitive Strain Injury (RSI) Early Warning Signs and Prevention",
+            """**Topic**: The Patel Scale of RSI progression and OSHA reporting
+
+**Key Information**:
+The five stages of RSI progression (Patel Scale):
+- Stage 1 (Awareness): Tingling/mild aching during work that resolves within 30 minutes of stopping. Adjust workstation per ERGO-7.
+- Stage 2 (Persistence): Discomfort persists 1-4 hours after stopping. Workstation adjustment within 48 hours. Begin contrast therapy (20s cold / 20s warm × 5, twice daily).
+- Stage 3 (Interference): Pain affects non-work activities (gripping, opening jars, sleep). Mandatory ergonomic reassessment + medical evaluation within 1 week. Temporary duty modification required.
+- Stage 4 (Chronic): Constant pain, measurable grip strength reduction (>15% below baseline). Formal medical treatment plan, possible work restriction. Average recovery: 3-6 months.
+- Stage 5 (Disability): Severe constant pain with significant functional limitation. May require surgery. Average recovery: 12-18 months. Many Stage 5 cases never fully resolve.
+
+Critical statistic: 90% of RSI cases caught at Stage 1-2 are fully resolved within 4 weeks with workstation adjustment alone. Only 40% of Stage 3 cases achieve full resolution. Prevention is dramatically more effective than treatment.
+
+OSHA reporting:
+RSI cases that result in medical treatment beyond first aid, restricted duty, or days away from work must be logged on OSHA Form 300 within 7 calendar days of the employer becoming aware of the condition.
+
+**Common Questions**:
+Q: When must I file OSHA Form 300? A: Within 7 calendar days of the employer becoming aware of the qualifying RSI condition.
+Q: What's the recovery rate at Stage 3? A: 40% achieve full resolution, vs. 90% at Stages 1-2 — early intervention dramatically improves outcomes.
+
+**When to Escalate**:
+Any Stage 3+ case requires medical evaluation within one week, and any Stage 4-5 case should be co-managed with occupational health.
+""",
+        ),
+    ],
+
+    "Small Business Tax Compliance": [
+        (
+            "Quarterly Tax Filing Requirements for Small Businesses",
+            """**Topic**: Estimated quarterly taxes (Form 1040-ES / 1120-W), safe harbor, and Form 941
+
+**Key Information**:
+Small businesses must file estimated quarterly tax payments using IRS Form 1040-ES (sole proprietors / single-member LLCs) or Form 1120-W (corporations) if they expect to owe $1,000 or more in tax for the year.
+
+Quarterly deadlines:
+- Q1: April 15
+- Q2: June 15  (only 2 months after Q1 — catches first-time business owners off guard)
+- Q3: September 15
+- Q4: January 15 of the following year
+
+Safe harbor rule:
+You won't owe an underpayment penalty if total estimated payments equal at least 100% of the prior year's tax liability (110% if AGI exceeded $150,000). This is the "prior year safe harbor" — simplest approach for variable-income businesses.
+
+Annualized income installment method:
+The annualized income installment method (Form 2210, Schedule AI) can reduce required quarterly payments for businesses with seasonal income patterns. Paperwork rarely justifies the benefit unless income varies by more than 40% between quarters.
+
+Employment taxes:
+Businesses with employees must also file Form 941 quarterly (withheld income tax + employer/employee Social Security and Medicare). Form 941 deadlines: April 30, July 31, October 31, January 31. Deposits semi-weekly or monthly depending on total employment tax liability — threshold is $50,000 in the lookback period.
+
+State filing:
+Most states with income tax require separate quarterly estimated payments. California, New York, and Illinois all use the same federal deadlines.
+
+**Common Questions**:
+Q: When is Q2 due? A: June 15 — only 2 months after Q1, not 3.
+Q: How do I avoid the underpayment penalty? A: Pay at least 100% of last year's tax liability (110% if AGI > $150,000).
+
+**When to Escalate**:
+Refer ambiguous safe-harbor calculations or first-year corporate filings to a CPA before the Q1 deadline.
+""",
+        ),
+        (
+            "Commonly Overlooked Business Deductions",
+            """**Topic**: Home office, vehicle, Section 179, business meal, and retirement deductions
+
+**Key Information**:
+
+Home office deduction:
+- Simplified method: $5 per square foot, max 300 sq ft ($1,500 max).
+- Regular method: actual expenses × business-use percentage. Space must be used regularly AND exclusively for business.
+- The regular method requires tracking mortgage interest/rent, utilities, insurance, repairs, and depreciation allocated to the office percentage.
+
+Vehicle deduction (2024-2025):
+- Standard mileage rate: 67 cents per mile.
+- Actual expense method: track all costs (gas, insurance, maintenance, depreciation) × business-use percentage.
+- You MUST choose one method in the first year a vehicle is used for business and generally must continue with it.
+- Keep a contemporaneous mileage log — IRS audits target this deduction.
+
+Section 179 deduction:
+- Immediately deduct the full purchase price of qualifying business equipment up to $1,160,000 for 2024.
+- Phases out dollar-for-dollar when total equipment purchases exceed $2,890,000.
+- Cannot create a business loss — limited to business taxable income.
+- Qualifying equipment: computers, machinery, furniture, certain vehicles over 6,000 lbs GVWR.
+
+Business meal deduction:
+- 50% of meal costs with a clear business purpose.
+- Document: date, location, business relationship of attendees, business purpose discussed. Tips and tax are deductible.
+- Office grocery purchases: 50% deductible.
+- Client entertainment (sporting events, concerts): NOT deductible since the 2017 Tax Cuts and Jobs Act.
+
+Retirement plans:
+- SEP-IRA: up to 25% of net self-employment income (max $66,000 for 2024).
+- Solo 401(k): up to $23,000 employee + 25% employer contribution.
+- Solo 401(k) generally allows higher total contributions for income under $300,000.
+
+**Common Questions**:
+Q: What's the Section 179 limit? A: $1,160,000 for 2024, phasing out above $2,890,000 in total equipment purchases.
+Q: Can I deduct a Yankees game with a client? A: No. Client entertainment is fully nondeductible since the 2017 TCJA. Only meals with documented business purpose qualify (50%).
+
+**When to Escalate**:
+Section 179 + bonus depreciation interactions on large equipment buys should go to a CPA before year-end.
+""",
+        ),
+    ],
+
+    "Environmental Compliance for Small Businesses": [
+        (
+            "Hazardous Waste Classification and Disposal Requirements",
+            """**Topic**: RCRA generator categories, disposal requirements, and penalties
+
+**Key Information**:
+Under EPA regulations (RCRA), businesses are classified by monthly hazardous-waste generation:
+
+- Conditionally Exempt Small Quantity Generator (CESQG): under 220 lbs (100 kg) per month. Identify waste, never accumulate over 2,200 lbs, use a licensed hauler.
+- Small Quantity Generator (SQG): 220-2,200 lbs (100-1,000 kg) per month. Obtain an EPA ID number (Form 8700-12, processing 30-45 days). Store waste in labeled containers with the accumulation start date. Maximum storage 270 days (or 180 days if shipping less than 200 miles). Biennial report required.
+- Large Quantity Generator (LQG): over 2,200 lbs (1,000 kg) per month. Maximum storage 90 days. Full RCRA permit and emergency action plan required.
+
+Common small-business hazardous wastes:
+- Used motor oil (auto shops)
+- Spent solvents (dry cleaners, print shops)
+- Photographic fixer solutions
+- Fluorescent light tubes — contain mercury (4-foot tubes contain ~3.5 mg each)
+- Electronic waste containing lead solder
+
+Disposal documentation:
+A Uniform Hazardous Waste Manifest (EPA Form 8700-22) must accompany every shipment. The manifest is an 8-copy form:
+- Generator keeps copies 1 and 6
+- Transporter keeps copies 3 and 7
+- Designated facility keeps copies 4 and 8
+- Copies 2 and 5 are returned to the generator by the transporter and facility respectively as proof of delivery
+Manifests must be retained for 3 years minimum.
+
+Penalties:
+- Failure to properly classify waste: up to $37,500 per day per violation.
+- Disposing of hazardous waste in regular trash: up to $50,000 per day plus potential criminal charges.
+- Not having an EPA ID when required: $37,500 per day.
+
+**Common Questions**:
+Q: What's the penalty for not having an EPA ID? A: $37,500 per day.
+Q: How long must I retain hazardous waste manifests? A: At least 3 years.
+
+**When to Escalate**:
+Any classification ambiguity at the SQG/LQG threshold should be confirmed by the state environmental agency before the next biennial report.
+""",
+        ),
+        (
+            "Small Business Air Quality Permits",
+            """**Topic**: Clean Air Act permit tiers, common business categories, and New Source Review
+
+**Key Information**:
+The Clean Air Act requires any business emitting regulated pollutants to obtain an air-quality permit. Three tiers:
+
+- Exempt sources: less than 5 tons/year of any single criteria pollutant (VOCs, NOx, SO2, CO, PM10, PM2.5) AND less than 12.5 tons/year combined. Most small offices, retail stores, and light commercial businesses fall here. No permit needed but you must demonstrate exemption if asked.
+
+- Minor source permits ("synthetic minor" / state permits): 5-100 tons/year of any single pollutant. Permit issued by the state environmental agency. Application fee typically $500-$2,500. Processing 60-120 days. Annual emissions reporting required.
+
+- Title V (major source) permits: over 100 tons/year of any single criteria pollutant, OR over 10 tons/year of any single hazardous air pollutant (HAP), OR over 25 tons/year of combined HAPs. Full federal permit. Annual compliance certification. Permit fees $5,000-$25,000+ annually.
+
+Businesses commonly requiring air permits:
+- Auto body shops (paint spray booths emit VOCs — typical booth emits 3-8 tons/year)
+- Dry cleaners using perchloroethylene (a HAP)
+- Bakeries producing more than 10,000 lbs of product per day (yeast fermentation emits ethanol, a VOC)
+- Furniture manufacturers using solvent-based finishes
+
+New Source Review (NSR):
+If you modify equipment that increases emissions by more than the "significant" threshold (40 tons/year for VOCs in most areas, 25 tons in ozone non-attainment areas), obtain an NSR permit BEFORE beginning the modification. Penalty for starting construction without NSR approval: up to $37,500 per day.
+
+**Common Questions**:
+Q: Do I need a permit for a small office? A: No, if combined emissions stay under 12.5 tons/year and no single pollutant exceeds 5 tons/year.
+Q: When does NSR apply? A: Whenever a modification raises emissions above the 40 t/yr VOC threshold (25 t/yr in non-attainment areas) — and it must be obtained BEFORE construction begins.
+
+**When to Escalate**:
+Modifications near NSR thresholds should be reviewed with the state agency before any equipment is ordered.
 """,
         ),
     ],
 }
 
 
-def seed_v1(db) -> None:
-    """Seed v1 benchmark tables with fictional SME data."""
+def seed_v1(db, subject_map: dict[str, models.Subject], legacy_sme_map: dict[str, models.Profile]) -> None:
+    """Seed v1 benchmark tables. Mirrors the legacy SMEs into V1SMEProfile +
+    V1KnowledgeEntry (status=approved) and indexes each entry into the
+    matching subject's ChromaDB collection so /api/v1/query can retrieve it."""
     if db.query(models.V1SMEProfile).count() > 0:
-        print("[seed] v1 tables already have data; skipping v1 seed.")
+        print("[seed] v1 tables already populated; skipping v1 seed.")
         return
 
     def new_id(prefix: str) -> str:
         return f"{prefix}_{_uuid.uuid4().hex[:8]}"
 
-    v1_smes_data = [
-        {
-            "name": "Dr. Helga Voss",
-            "specialization": "Zorblatt Crystals",
-            "sub_areas": ["Crystal cultivation", "Voss Scale grading", "Z7 certification"],
-            "contact_email": "zorblatt@test.thoth.dev",
-        },
-        {
-            "name": "Ambassador Rex Tillby",
-            "specialization": "Flumgarten Diplomacy",
-            "sub_areas": ["Tillby Accords trade rules", "Greeting protocols", "Clinkmark exchange"],
-            "contact_email": "flumgarten@test.thoth.dev",
-        },
-        {
-            "name": "Chief Engineer Mona Wrench",
-            "specialization": "Reverse Plumbing",
-            "sub_areas": ["Wrench Paradox", "Contradictory Pipe installation", "RP-4 certification"],
-            "contact_email": "reverse@test.thoth.dev",
-        },
-    ]
-
-    spec_to_subject = {
-        "Zorblatt Crystals": "Zorblatt Crystals",
-        "Flumgarten Diplomacy": "Flumgarten Diplomacy",
-        "Reverse Plumbing": "Reverse Plumbing",
-    }
-
-    for sme_data in v1_smes_data:
-        sme = models.V1SMEProfile(sme_id=new_id("sme"), **sme_data)
+    for name, subject_name, _expertise, contact_email, sub_areas in SMES:
+        sme = models.V1SMEProfile(
+            sme_id=new_id("sme"),
+            name=name,
+            specialization=subject_name,
+            sub_areas=sub_areas,
+            contact_email=contact_email,
+        )
         db.add(sme)
         db.flush()
 
-        subject_key = spec_to_subject[sme_data["specialization"]]
-        for title, content in KNOWLEDGE.get(subject_key, []):
+        subj = subject_map[subject_name]
+        for title, content in KNOWLEDGE.get(subject_name, []):
             entry = models.V1KnowledgeEntry(
                 entry_id=new_id("ke"),
                 sme_id=sme.sme_id,
@@ -278,9 +473,12 @@ def seed_v1(db) -> None:
                 },
             )
             db.add(entry)
-            print(f"[seed] + v1 approved entry: {sme_data['specialization']} / {title}")
+            db.flush()
+            # Index into the subject's ChromaDB collection so V1 queries retrieve.
+            vector_store.add_v1_entry(subj.id, entry.entry_id, sme.sme_id, title, content)
+            print(f"[seed] + v1 approved entry: {subject_name} / {title}")
 
-        print(f"[seed] + v1 SME: {sme_data['name']} ({sme_data['specialization']})")
+        print(f"[seed] + v1 SME: {name} ({subject_name})")
 
     db.commit()
     print("[seed] v1 seed done.")
@@ -291,7 +489,10 @@ def main():
     db = SessionLocal()
     try:
         if db.query(models.Profile).count() > 0 or db.query(models.Subject).count() > 0:
-            print("[seed] Old tables already have data; skipping old seed.")
+            print("[seed] Old tables already have data; skipping legacy seed.")
+            # Still re-derive maps so seed_v1 can run if its tables are empty.
+            subject_map = {s.name: s for s in db.query(models.Subject).all()}
+            legacy_sme_map = {p.name: p for p in db.query(models.Profile).filter(models.Profile.role == "sme").all()}
         else:
             # Subjects
             subject_map: dict[str, models.Subject] = {}
@@ -302,9 +503,9 @@ def main():
                 subject_map[name] = s
                 print(f"[seed] + subject: {name}")
 
-            # SMEs
-            sme_map: dict[str, models.Profile] = {}
-            for name, subject_name, expertise, contact in SMES:
+            # SMEs (legacy Profile rows for the login flow)
+            legacy_sme_map: dict[str, models.Profile] = {}
+            for name, subject_name, expertise, contact, _sub_areas in SMES:
                 p = models.Profile(
                     name=name,
                     role="sme",
@@ -314,8 +515,8 @@ def main():
                 p.subjects = [subject_map[subject_name]]
                 db.add(p)
                 db.flush()
-                sme_map[name] = p
-                print(f"[seed] + SME: {name} — {subject_name} ({expertise})")
+                legacy_sme_map[name] = p
+                print(f"[seed] + SME: {name} — {subject_name}")
 
             # Users
             for name in USERS:
@@ -329,11 +530,11 @@ def main():
 
             db.commit()
 
-            # Approved knowledge entries + ChromaDB
+            # Approved knowledge entries (legacy table) — auto-indexed into ChromaDB.
             for subject_name, entries in KNOWLEDGE.items():
                 subject = subject_map[subject_name]
                 contributor = next(
-                    (sme for sme_name, s_name, _, _ in SMES if s_name == subject_name for sme in [sme_map[sme_name]]),
+                    (legacy_sme_map[sme_name] for sme_name, s_name, *_ in SMES if s_name == subject_name),
                     None,
                 )
                 for title, content in entries:
@@ -347,15 +548,14 @@ def main():
                     )
                     print(f"[seed] + approved entry: {subject_name} / {title} (id={entry.id})")
 
-            # Verify ChromaDB
             for subject_name, subject in subject_map.items():
                 coll = vector_store.get_collection(subject.id)
                 print(f"[seed] chroma collection {coll.name}: {coll.count()} docs")
 
-            print("[seed] Done.")
+            print("[seed] legacy seed done.")
 
-        # V1 seed — independent guard inside seed_v1() itself
-        seed_v1(db)
+        # V1 seed runs independently (its own guard checks V1SMEProfile count).
+        seed_v1(db, subject_map, legacy_sme_map)
     finally:
         db.close()
 

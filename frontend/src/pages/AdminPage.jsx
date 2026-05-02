@@ -1,49 +1,46 @@
 import { useEffect, useMemo, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
-import RoleHeader from '../components/RoleHeader'
+import TopBar from '../components/TopBar'
 import {
-  currentProfile, adminPending, adminApprove, adminReject,
+  adminPending, adminApprove, adminReject,
   adminEscalations, adminResolveEscalation,
   adminDirectory, adminRequestReview,
 } from '../api'
+import { useAuth } from '../auth'
 
-const POLL_MS = 5000
+const PINK = '#E20074'
 
 export default function AdminPage() {
-  const [me, setMe] = useState(currentProfile('admin'))
+  const me = useAuth()
   const [tab, setTab] = useState('queue')
 
-  // Distinct title so launch.sh's wmctrl pass can find this window
   useEffect(() => { document.title = 'Thoth — Admin' }, [])
 
+  if (!me) return null
+
   return (
-    <div className="flex flex-col h-full">
-      <RoleHeader role="admin" onProfileChange={setMe} />
-      {!me ? (
-        <div className="flex-1 flex items-center justify-center text-sm text-slate-500">
-          Pick or create an admin profile in the header to start.
-        </div>
-      ) : (
-        <div className="flex-1 overflow-auto">
-          <div className="max-w-5xl mx-auto px-6 py-4">
-            <div className="flex gap-4 border-b mb-4">
-              {[['queue', 'Approval Queue'], ['escalations', 'Escalations'], ['directory', 'SME Directory']].map(([k, label]) => (
-                <button
-                  key={k}
-                  onClick={() => setTab(k)}
-                  className={[
-                    'px-4 py-2 text-sm font-medium border-b-2 -mb-px',
-                    tab === k ? 'border-rose-600 text-rose-700' : 'border-transparent text-slate-500 hover:text-slate-800',
-                  ].join(' ')}
-                >{label}</button>
-              ))}
-            </div>
-            {tab === 'queue' && <ApprovalQueue me={me} />}
-            {tab === 'escalations' && <Escalations me={me} />}
-            {tab === 'directory' && <Directory me={me} />}
+    <div className="flex flex-col h-full bg-white">
+      <TopBar />
+      <div className="flex-1 overflow-auto">
+        <div className="max-w-5xl mx-auto px-6 py-4">
+          <div className="flex gap-4 border-b border-gray-200 mb-4">
+            {[['queue', 'Approval Queue'], ['escalations', 'Escalations'], ['directory', 'SME Directory']].map(([k, label]) => (
+              <button
+                key={k}
+                onClick={() => setTab(k)}
+                className="px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors"
+                style={{
+                  borderColor: tab === k ? PINK : 'transparent',
+                  color: tab === k ? PINK : '#64748b',
+                }}
+              >{label}</button>
+            ))}
           </div>
+          {tab === 'queue' && <ApprovalQueue me={me} />}
+          {tab === 'escalations' && <Escalations me={me} />}
+          {tab === 'directory' && <Directory me={me} />}
         </div>
-      )}
+      </div>
     </div>
   )
 }
@@ -57,11 +54,7 @@ function ApprovalQueue({ me }) {
     setErr('')
     try { setRows(await adminPending()) } catch (e) { setErr(e.message) }
   }
-  useEffect(() => {
-    refresh()
-    const id = setInterval(refresh, POLL_MS)
-    return () => clearInterval(id)
-  }, [])
+  useEffect(() => { refresh() }, [])
 
   const approve = async (id) => {
     setBusy(true)
@@ -114,11 +107,7 @@ function Escalations({ me }) {
     } catch (e) { setErr(e.message) }
   }
 
-  useEffect(() => {
-    refresh()
-    const id = setInterval(refresh, POLL_MS)
-    return () => clearInterval(id)
-  }, [view])
+  useEffect(() => { refresh() }, [view])
 
   const selected = useMemo(() => rows.find((r) => r.id === selectedId) || null, [rows, selectedId])
 
@@ -262,11 +251,7 @@ function Directory({ me }) {
     adminDirectory().then(setRows).catch((e) => setErr(e.message))
   }
 
-  useEffect(() => {
-    refresh()
-    const id = setInterval(refresh, POLL_MS)
-    return () => clearInterval(id)
-  }, [])
+  useEffect(() => { refresh() }, [])
 
   const requestReview = async (sme_id, sme_name) => {
     const message = window.prompt(

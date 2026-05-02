@@ -1,25 +1,10 @@
-# Secrets
 .env
-.env.*
-!.env.example
-
-# Data
-data/
-
-# Python
-__pycache__/
-*.pyc
 .venv/
-venv/
-.mypy_cache/
-.pytest_cache/
-
-# Node / Vite
+data/
+__pycache__/
 node_modules/
-frontend/dist/
-frontend/.vite/
-
-# Editor / OS
+*.pyc
 .DS_Store
-.vscode/
+dist/
 .idea/
+.vscode/

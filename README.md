@@ -1,189 +1,103 @@
 # Project Thoth
 
-AI-powered SME knowledge capture and retrieval system for the GIX/T-Mobile hackathon. Demo deadline: May 4, 2026.
+**AI-powered SME knowledge capture and retrieval — GIX × T-Mobile hackathon submission.**
 
-Thoth is the orchestrator — it classifies questions and routes them to subject-scoped LLM agents. Each agent answers only from its own approved knowledge, so domains never cross-contaminate.
-
-See [CLAUDE.md](CLAUDE.md) for the architecture spec and [PROMPTS.md](PROMPTS.md) for every LLM prompt used.
+Thoth is an orchestrator. It does not answer user questions directly. Instead, it classifies each question and routes it to a subject-scoped LLM agent that retrieves only from approved, SME-authored knowledge. Cross-domain contamination, parametric leakage from training data, and unverified content are all blocked at the architectural level.
 
 ---
 
-## Prerequisites
+## Why this exists
 
-- **Python 3.11+** (`python3 --version`)
-- **Node.js 18+** (`node --version`)
-- **An Anthropic API key** — get one at <https://console.anthropic.com>. It must start with `sk-ant-`. OpenRouter keys (`sk-or-…`) won't work; the backend uses the official `anthropic` SDK.
-- SSH access to this repo (or swap `origin` to HTTPS — see git section).
+T-Mobile (and most large enterprises) have deep subject knowledge locked in the heads of senior employees. Capturing that knowledge as documentation is slow, lossy, and the result is rarely searchable in context. Thoth turns the capture step into a guided interview, the storage step into a per-subject vector index, and the retrieval step into scoped, grounded answers with mandatory citation and disclaimer.
 
-## First-time setup
+## What ships in this PoC
 
-From the repo root (`Thoth/`):
+- **Knowledge capture**: SMEs run AI-led structured or freeform interviews. Thoth synthesizes a draft entry strictly from what the SME said.
+- **Two-stage approval**: SME approves their own synthesis → admin approves before content enters the live knowledge base.
+- **Scoped retrieval**: each subject has its own ChromaDB collection; the answering agent only sees that collection.
+- **Routing**: high-confidence questions → answer; mid-confidence → clarifying question; low-confidence → admin escalation.
+- **Closed-book guarantee**: with zero approved entries, the query endpoint refuses to invoke the LLM. No training-data leakage.
+- **Disclaimer on every grounded answer**: source IDs, SME name, and a "based on internal SME knowledge" notice.
+- **Token telemetry**: every LLM call is tracked; the V1 query endpoint reports per-request usage.
+- **/api/v1 benchmark surface**: a separate Bearer-authenticated API for the evaluation harness.
 
-```bash
-# 1. Create your local .env
-cp .env.example .env
-# then edit .env and paste your ANTHROPIC_API_KEY
-
-# 2. Backend — create venv + install deps + seed demo data
-python3 -m venv .venv
-source .venv/bin/activate
-pip3 install -r backend/requirements.txt
-cd backend && python3 seed.py && cd ..
-
-# 3. Frontend — install deps
-cd frontend && npm install && cd ..
-```
-
-The `data/` directory (SQLite DB + ChromaDB persistent storage + uploads) is auto-created on first run and is gitignored. Each teammate has their own local copy.
-
-## Running the app
-
-Two terminals:
+## Quick start
 
 ```bash
-# Terminal 1 — backend (http://localhost:8000)
-source .venv/bin/activate
-cd backend && python3 -m uvicorn main:app --reload --port 8000
+# One-shot (creates venv, installs deps, seeds DB on first run, opens browser)
+./launch.sh
+
+# Or manual
+python3 -m venv .venv && source .venv/bin/activate
+cd backend && pip install -r requirements.txt && python seed.py
+uvicorn main:app --reload --port 8000
+
+# In a second shell
+cd frontend && npm install && npm run dev
 ```
 
-```bash
-# Terminal 2 — frontend (http://localhost:5173)
-cd frontend && npm run dev
-```
+Frontend: http://localhost:5173 · Backend: http://localhost:8000 · Swagger: http://localhost:8000/docs
 
-Open <http://localhost:5173>. The Vite dev server proxies `/api` to the backend, so both have to be running.
-
-### Demo login profiles (already seeded)
-
-- **Users**: Alex Rivera, Jordan Lee
-- **SMEs**: Lisa Li (Coffee), Mengting Li (Milk Tea), Rushav (Cars)
+### Sign in
+Open the frontend, pick a role (User / SME / Admin), then click a seeded profile to "log in".
+- **User**: Alex Rivera, Jordan Lee
+- **SME**: Dr. Sarah Chen (Food Safety), Marcus Williams (CRE Leasing), Dr. Priya Patel (Ergonomics), James Ortega (Tax), Dr. Nina Kowalski (Environmental)
 - **Admin**: Pat Morgan
 
-### Resetting local data
+### Try a query
+Ask the User chat: "What score gives a restaurant an A grade?" → routes to Food Safety agent, answers from KB (90-100 points), shows the disclaimer and source.
 
-If your DB gets into a weird state or the schema changed:
+Ask: "What's the Section 179 deduction limit?" → Tax agent answers $1,160,000.
 
-```bash
-rm -f data/thoth.db
-rm -rf data/chroma
-cd backend && python3 seed.py
-```
+Ask: "How do I train my dog?" → no matching subject, escalates to admin.
 
----
+## Benchmark API
 
-## Who owns what
-
-### Lisa (Coffee SME / Designer) & Ting (Milk Tea SME / Designer)
-
-You're driving the Figma design for the demo-ready UI polish. The current React app is intentionally barebones — clean structure, Tailwind utility classes, minimal styling — so it's easy to restyle without touching logic. When you're ready to hand off designs, Rushav and John will wire them into the existing components (`ChatWindow`, `MessageBubble`, `ReviewPanel`, pages).
-
-During the demo, you'll also act as live SMEs: Lisa answers coffee questions through Thoth's interview flow, Ting does milk tea. Please do a practice interview in the SME dashboard before demo day so Thoth's questions feel natural to you.
-
-### Rushav & John — dev split
-
-To stay out of each other's way, own these areas. **Anything not on your list, coordinate before touching.**
-
-**Rushav — the "Read" path (user + admin side):**
-- `backend/agents/thoth.py` (orchestrator/router)
-- `backend/agents/sme_agent.py` (RAG + answer generation)
-- `backend/services/classifier.py`
-- `backend/routes/query.py`, `backend/routes/admin.py`
-- `frontend/src/pages/LoginPage.jsx`
-- `frontend/src/pages/UserChatPage.jsx`
-- `frontend/src/pages/AdminPage.jsx`
-- Demo script + rehearsal
-- Prompt tuning: `CLASSIFIER_PROMPT`, `SME_AGENT_PROMPT`, `CLARIFICATION_PROMPT`
-
-**John — the "Write" path (SME side):**
-- `backend/agents/interviewer.py` (interview + synthesis)
-- `backend/routes/interviews.py`, `backend/routes/review.py`, `backend/routes/files.py`
-- `backend/services/file_parser.py`, `backend/services/knowledge.py`
-- `frontend/src/pages/SMEDashboardPage.jsx`
-- `frontend/src/components/ReviewPanel.jsx`
-- `backend/seed.py` (extend demo content)
-- Prompt tuning: `INTERVIEWER_PROMPT`, `SYNTHESIS_PROMPT`
-
-**Shared — coordinate on Slack/DM before editing:**
-- `backend/models.py` (schema changes force everyone to re-seed)
-- `backend/main.py` (route registration)
-- `backend/requirements.txt` / `frontend/package.json`
-- `frontend/src/App.jsx` (router)
-- `frontend/src/api.js` (shared fetch wrapper)
-- `frontend/src/components/ChatWindow.jsx`, `MessageBubble.jsx`, `SubjectBadge.jsx`
-- `backend/agents/prompts.py` — we both edit this. Only touch **your** prompt constants; if you rearrange the file, tell the other person first.
-- `CLAUDE.md`, `README.md`
-
----
-
-## Git rules — please follow these so we don't clobber each other
-
-### Branches
-
-Never push directly to `main`. Create a feature branch per task:
+The `/api/v1/...` surface implements the evaluator's contract. See `benchmark/api-specification.md` for the full schema, and run the smoke suite with:
 
 ```bash
-git checkout main
-git pull                                       # always start from latest main
-git checkout -b yourname/short-description     # e.g. rushav/classifier-threshold
+./test_benchmark.sh
 ```
 
-Good branch names: `rushav/admin-escalation-ui`, `john/interview-file-upload`, `rushav/demo-prompts`.
+Requires the backend running and a `BENCHMARK_API_KEY` in `.env`.
 
-### Daily workflow
+> **Deployed URL**: _to be filled in before submission_
+> **Benchmark API key**: _to be filled in before submission_
 
-```bash
-git pull --rebase origin main     # pull latest before you start (avoids merge commits)
-# ... do work, commit often ...
-git add <specific files>          # prefer this over `git add .`
-git commit -m "short, imperative message — what and why"
-git push -u origin yourname/feature
+## Architecture summary
+
+| Layer | Component | Responsibility |
+|---|---|---|
+| Orchestration | `services/classifier.py` | Subject classification + clarifying questions |
+| Routing | `routes/v1/query.py` | Confidence thresholds → answer / clarify / route |
+| Retrieval | `vector_store.py` | Per-subject ChromaDB collections |
+| Generation | `agents/sme_agent.py` | Subject-scoped answer with mandatory citation |
+| Capture | `agents/interviewer_v1.py` | Interview turns + synthesis (Sonnet) |
+| Lifecycle | `routes/v1/knowledge.py` | draft → sme_approved → approved |
+| Guard | `main.py` middleware | Bearer auth on `/api/v1` |
+
+See **[ARCHITECTURE.md](./ARCHITECTURE.md)** for diagrams, data model, and capability mapping. See **[PRODUCTION_RECOMMENDATIONS.md](./PRODUCTION_RECOMMENDATIONS.md)** for the path from PoC to deployable service. **[DEMO_SCRIPT.md](./DEMO_SCRIPT.md)** has the live-demo runbook.
+
+## Tech stack
+
+- **Backend**: Python 3.11+, FastAPI, SQLAlchemy + SQLite, ChromaDB, `anthropic` SDK
+- **Frontend**: React 18, Vite, Tailwind CSS, react-router-dom, react-markdown
+- **LLM**: Claude Sonnet 4 for synthesis & answers, Haiku 4.5 for classification & follow-ups
+- **Embeddings**: ChromaDB default (`all-MiniLM-L6-v2`)
+
+## Team
+
+- Rushav (backend, V1 benchmark, classifier, frontend integration)
+- John (interview pipeline, knowledge service, file parsing)
+- Lisa Li & Mengting Li (visual design, prototyped in Figma → Thothweb)
+
+## Repository layout
+
 ```
-
-Then open a pull request on GitHub into `main`. The other dev reviews + merges. Delete the branch after merge.
-
-### Do not
-
-- **Do not** `git push --force` to `main`. Ever.
-- **Do not** commit `.env`, `data/`, `.venv/`, `node_modules/`, `data/thoth.db`, or anything inside `data/chroma/`. The `.gitignore` covers them, but always check `git status` before you commit. If you see any of these staged, unstage them.
-- **Do not** `git add .` or `git add -A` without reading `git status` first — one stray file in the wrong place and we're in trouble.
-- **Do not** merge your own PR without a second pair of eyes, except for tiny doc-only fixes.
-- **Do not** rewrite history on a pushed branch (`git rebase -i`, `commit --amend`) after someone else has pulled it.
-
-### If something goes wrong
-
-- **Merge conflict on pull**: resolve locally, test, then `git rebase --continue` or `git commit`. Don't panic; don't force anything.
-- **Committed a secret by accident**: stop, tell the other dev immediately, and rotate the key. Rewriting history on a shared repo is messy; the faster path is usually to rotate the leaked credential.
-- **Broken main**: revert the offending commit with `git revert <sha>` and push the revert through a PR. Don't force-push a fix.
-
-### Switching `origin` to HTTPS (optional)
-
-If SSH auth is annoying:
-
-```bash
-git remote set-url origin https://github.com/rushav/T-Mobile-Thoth.git
+backend/        FastAPI app, agents, routes, services, ORM, seed
+frontend/       Vite/React single-window UI
+benchmark/      api-specification.md (the V1 contract)
+data/           Runtime artifacts (gitignored — SQLite + Chroma)
+launch.sh       One-shot dev startup
+test_benchmark.sh  Smoke + edge-case suite for /api/v1
 ```
-
-You'll need a GitHub personal access token as your password on first push.
-
----
-
-## Testing as you go
-
-Manual testing is fine for this PoC — no unit-test suite. After any backend change, hit a relevant endpoint:
-
-```bash
-# examples
-curl http://localhost:8000/api/subjects
-curl http://localhost:8000/api/admin/pending
-curl -X POST http://localhost:8000/api/query \
-  -H 'Content-Type: application/json' -H 'X-Profile-Id: 4' \
-  -d '{"question":"How do I make pour-over coffee?"}'
-```
-
-The full demo flow (see [SETUP_GUIDE.md](SETUP_GUIDE.md) for the judges-day script):
-
-1. Log in as an SME → run an interview → generate summary → approve.
-2. Log in as admin (Pat Morgan) → approve the entry from the queue.
-3. Log in as a user (Alex Rivera) → ask a question → see the right subject agent answer it.
-4. Ask a question no subject matches → see it escalate to admin.
-5. Ask an ambiguous question → see Thoth's clarifying question.

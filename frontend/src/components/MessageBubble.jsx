@@ -1,5 +1,13 @@
 import ReactMarkdown from 'react-markdown'
-import SubjectBadge from './SubjectBadge'
+
+function SubjectBadge({ subject, confidence }) {
+  return (
+    <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-pink-50 text-[#E20074] border border-pink-200">
+      {subject}
+      {typeof confidence === 'number' && <span className="opacity-60">· {(confidence).toFixed(2)}</span>}
+    </span>
+  )
+}
 
 const markdownComponents = {
   p: ({ node, ...props }) => <p className="leading-relaxed" {...props} />,
