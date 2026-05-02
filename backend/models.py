@@ -56,6 +56,7 @@ class KnowledgeEntry(Base):
     approved_at = Column(DateTime, nullable=True)
     review_date = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     subject = relationship("Subject", back_populates="entries")
     contributor = relationship("Profile", back_populates="contributions", foreign_keys=[contributor_id])

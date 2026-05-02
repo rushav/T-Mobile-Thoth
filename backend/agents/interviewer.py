@@ -13,15 +13,19 @@ def _interviewer_system_prompt(sme_name: str, subject_name: str, mode: str) -> s
 
 
 def next_message(sme_name: str, subject_name: str, messages: list[dict], mode: str = "structured") -> str:
-    """Given conversation history, produce Thoth's next interviewer message."""
+    """Given conversation history, produce Thoth's next interviewer message.
+    Uses the `fast` tier — interviewer turns are short and don't need quality
+    model reasoning."""
     system = _interviewer_system_prompt(sme_name, subject_name, mode)
     api_messages = [{"role": m["role"], "content": m["content"]} for m in messages]
     if not api_messages:
         api_messages = [{"role": "user", "content": "Please begin the interview."}]
-    return chat(system=system, messages=api_messages, max_tokens=600, temperature=0.6)
+    return chat(system=system, messages=api_messages, max_tokens=600, temperature=0.6, tier="fast")
 
 
 def synthesize(sme_name: str, subject_name: str, transcript: str, uploaded_text: str, mode: str = "structured") -> str:
+    """Synthesis is the highest-stakes call (it produces the document the SME
+    will approve into the KB). Uses the `quality` tier."""
     prompt = SYNTHESIS_PROMPT.format(
         sme_name=sme_name,
         subject_name=subject_name,
@@ -34,12 +38,14 @@ def synthesize(sme_name: str, subject_name: str, transcript: str, uploaded_text:
         messages=[{"role": "user", "content": prompt}],
         max_tokens=1500,
         temperature=0.2,
+        tier="quality",
     )
 
 
 def revise(sme_name: str, subject_name: str, transcript: str, uploaded_text: str,
            previous_synthesis: str, feedback: str) -> str:
-    """Re-generate the synthesis given SME feedback. Stays grounded in transcript."""
+    """Re-generate the synthesis given SME feedback. Stays grounded in transcript.
+    Uses the `quality` tier."""
     prompt = REVISION_PROMPT.format(
         feedback=feedback or "(no specific feedback — re-synthesize to be more accurate)",
         interview_transcript=transcript,
@@ -51,6 +57,7 @@ def revise(sme_name: str, subject_name: str, transcript: str, uploaded_text: str
         messages=[{"role": "user", "content": prompt}],
         max_tokens=1500,
         temperature=0.2,
+        tier="quality",
     )
 
 

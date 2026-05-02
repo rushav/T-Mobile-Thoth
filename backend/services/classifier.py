@@ -2,15 +2,16 @@ import json
 import re
 from llm import complete
 from agents.prompts import CLASSIFIER_PROMPT, CLARIFICATION_PROMPT
+from services.token_tracker import TokenTracker
 
 
-def classify(subjects: list[dict], question: str) -> dict:
+def classify(subjects: list[dict], question: str, tracker: TokenTracker | None = None) -> dict:
     """subjects: [{id, name, description}]. Returns {subject, confidence, candidates, reasoning}."""
     subjects_list = "\n".join(
         f"- {s['name']}: {s.get('description') or ''}" for s in subjects
     ) or "(none)"
     prompt = CLASSIFIER_PROMPT.format(subjects_list=subjects_list, user_question=question)
-    raw = complete(prompt, max_tokens=400, temperature=0.0)
+    raw = complete(prompt, max_tokens=400, temperature=0.0, tier="fast", tracker=tracker)
     data = _extract_json(raw)
     if not isinstance(data, dict):
         return {
@@ -51,12 +52,16 @@ def classify(subjects: list[dict], question: str) -> dict:
     }
 
 
-def clarifying_question(question: str, possible_subjects: list[str]) -> str:
+def clarifying_question(
+    question: str,
+    possible_subjects: list[str],
+    tracker: TokenTracker | None = None,
+) -> str:
     prompt = CLARIFICATION_PROMPT.format(
         user_question=question,
         possible_subjects="\n".join(f"- {s}" for s in possible_subjects),
     )
-    return complete(prompt, max_tokens=150, temperature=0.4)
+    return complete(prompt, max_tokens=150, temperature=0.4, tier="fast", tracker=tracker)
 
 
 def _extract_json(text: str):

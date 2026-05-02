@@ -79,6 +79,13 @@ frontend/src/api.js            # API endpoint functions
 ## Current status
 
 ### Working
+- [x] /api/v1/* benchmark API surface (health, query, system/purge, system/reset, knowledge list/get/admin-approve/reject)
+- [x] Bearer-token auth on /api/v1 only (BENCHMARK_API_KEY in .env)
+- [x] Two-tier model routing (Haiku for classification/answers/clarifications, Sonnet for synthesis)
+- [x] Per-request TokenTracker — every /api/v1/query response carries usage object
+- [x] Closed-book short-circuit: zero approved entries → routing response, no LLM call
+- [x] Parametric-leakage-resistant SME prompt + refusal-phrase detection → grounded=false converts to routing
+- [x] /api/v1/query multi-turn session state (clarification → disambiguator → answer)
 - [ ] Classifier routes questions to correct subject agent
 - [ ] Confidence thresholds: >=0.7 route, 0.4-0.7 clarify, <0.4 escalate
 - [ ] SME agents answer from scoped ChromaDB collections only
@@ -119,6 +126,8 @@ Format:
 ```
 
 ### Log
+
+⚠️ [2026-05-01] [backend/main.py, backend/models.py, backend/database.py, backend/config.py, backend/llm.py, backend/agents/prompts.py, backend/agents/sme_agent.py, backend/agents/interviewer.py, backend/services/classifier.py, backend/services/token_tracker.py, backend/services/sessions.py, backend/routes/v1/__init__.py, backend/routes/v1/_common.py, backend/routes/v1/health.py, backend/routes/v1/query.py, backend/routes/v1/system.py, backend/routes/v1/knowledge.py, .env, .env.example] — Built the benchmark API surface at /api/v1/. Hits the existing internal /api/* routes is unchanged; the v1 surface is parallel and adds: GET /health, POST /query, POST /system/purge, POST /system/reset, GET /knowledge, GET /knowledge/{id}, POST /knowledge/{id}/admin-approve, POST /knowledge/{id}/reject. Bearer auth (`Authorization: Bearer <BENCHMARK_API_KEY>`) is enforced by middleware on /api/v1 only — internal frontend traffic untouched. Added two-tier model routing in config.MODELS (fast=Haiku-4.5 for classification/follow-ups/grounded answers/clarifications, quality=Sonnet-4 for synthesis/revision). Added TokenTracker that wraps every Anthropic call so each /api/v1/query response carries `usage: {prompt_tokens, completion_tokens, total_tokens, model}`. Closed-book guarantee: if zero approved entries exist, /api/v1/query short-circuits to a routing response *without calling the LLM at all* (usage=null). Parametric-leakage hardening: tightened SME_AGENT_PROMPT to forbid training-data fallbacks and added explicit refusal phrases ("I don't have enough approved knowledge to answer this") that the query layer detects to flip grounded=false → routing. Sessions live in services/sessions.py (in-memory, dict-backed) and survive across `/query` calls so a clarification turn followed by a disambiguator routes correctly. Multi-turn flow: response_type "clarification" stores the original question + candidates; the next message in the same session_id is treated as the disambiguator, combined with the original, and re-classified. **Shared files touched: main.py (v1 routers + auth middleware + CORS unchanged), models.py (added KnowledgeEntry.updated_at, with onupdate trigger via SQLAlchemy), database.py (added _migrate_sqlite() helper that runs ALTER TABLE for new columns on existing dev DBs — no wipe required), agents/prompts.py (only SME_AGENT_PROMPT touched; interviewer/synthesis/revision prompts unchanged so John's flows are not affected). John: if you pull and your dev DB doesn't already have updated_at, init_db() will ALTER it in. Your seed.py and interview pipeline keep working as-is — knowledge entries created via your code now also pick up updated_at automatically through SQLAlchemy. Status name mapping at the API boundary: internal "pending_admin_review" ↔ external "sme_approved" (the benchmark's vocabulary). Internal name still "pending_admin_review" everywhere in our DB and your code, so nothing in your write path needs to change.**
 
 [2026-04-28] [initial setup] — Project created. All files listed above are my responsibility.
 
