@@ -127,9 +127,55 @@ def get_entry(entry_id: int, db: Session = Depends(get_db)):
     return _entry_payload(entry)
 
 
+def _find_or_create_subject_for_topic(db: Session, topic: str) -> models.Subject:
+    """V1 entries don't carry a subject_id; we map topic 1:1 to a Subject row so
+    the classifier and the existing per-subject ChromaDB collections still work
+    for the V1 pipeline. Idempotent: returns the existing Subject if a row with
+    the same name already exists."""
+    subj = db.query(models.Subject).filter(models.Subject.name == topic).first()
+    if subj:
+        return subj
+    subj = models.Subject(name=topic, description=f"V1 SME knowledge: {topic}")
+    db.add(subj)
+    db.flush()
+    return subj
+
+
 @router.post("/{entry_id}/admin-approve")
-def admin_approve(entry_id: int, db: Session = Depends(get_db)):
-    entry = db.query(models.KnowledgeEntry).filter(models.KnowledgeEntry.id == entry_id).first()
+def admin_approve(entry_id: str, db: Session = Depends(get_db)):
+    """Final admin approval. Accepts both V1 (string ke_xxx) and legacy
+    (integer) entry IDs — dispatches on the prefix so we can keep one URL."""
+    # ── V1 SME-pipeline path ──────────────────────────────────────────────
+    if entry_id.startswith("ke_"):
+        v1 = db.query(models.V1KnowledgeEntry).filter(models.V1KnowledgeEntry.entry_id == entry_id).first()
+        if not v1:
+            return error(404, "NOT_FOUND", f"Knowledge entry {entry_id} not found")
+        if v1.status != "sme_approved":
+            return error(
+                409,
+                "INVALID_STATE_TRANSITION",
+                f"Entry is in state '{v1.status}', expected 'sme_approved'",
+            )
+        subj = _find_or_create_subject_for_topic(db, v1.topic)
+        v1.status = "approved"
+        v1.approved_at = datetime.utcnow()
+        v1.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(v1)
+        # Index the synthesized content so /api/v1/query can retrieve it.
+        vector_store.add_v1_entry(subj.id, v1.entry_id, v1.sme_id, v1.topic, v1.content)
+        return {
+            "entry_id": v1.entry_id,
+            "status": "approved",
+            "admin_approved_at": iso_or_none(v1.approved_at),
+        }
+
+    # ── Legacy path (integer IDs) ─────────────────────────────────────────
+    try:
+        legacy_id = int(entry_id)
+    except ValueError:
+        return error(404, "NOT_FOUND", f"Knowledge entry {entry_id} not found")
+    entry = db.query(models.KnowledgeEntry).filter(models.KnowledgeEntry.id == legacy_id).first()
     if not entry:
         return error(404, "NOT_FOUND", f"Knowledge entry {entry_id} not found")
     if entry.status != "pending_admin_review":
@@ -152,8 +198,38 @@ def admin_approve(entry_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{entry_id}/reject")
-def reject(entry_id: int, body: RejectBody = Body(default=RejectBody()), db: Session = Depends(get_db)):
-    entry = db.query(models.KnowledgeEntry).filter(models.KnowledgeEntry.id == entry_id).first()
+def reject(entry_id: str, body: RejectBody = Body(default=RejectBody()), db: Session = Depends(get_db)):
+    """Reject an entry. Accepts both V1 (string) and legacy (integer) IDs."""
+    # ── V1 path ───────────────────────────────────────────────────────────
+    if entry_id.startswith("ke_"):
+        v1 = db.query(models.V1KnowledgeEntry).filter(models.V1KnowledgeEntry.entry_id == entry_id).first()
+        if not v1:
+            return error(404, "NOT_FOUND", f"Knowledge entry {entry_id} not found")
+        if v1.status == "rejected":
+            return error(409, "INVALID_STATE_TRANSITION", "Entry is already rejected")
+        prior_status = v1.status
+        v1.status = "rejected"
+        v1.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(v1)
+        # If it was already in Chroma (admin-approved before being rejected),
+        # tear it back out. We need a subject_id — find by topic, no-op if missing.
+        if prior_status == "approved":
+            subj = db.query(models.Subject).filter(models.Subject.name == v1.topic).first()
+            if subj:
+                vector_store.remove_v1_entry(subj.id, v1.entry_id)
+        return {
+            "entry_id": v1.entry_id,
+            "status": "rejected",
+            "rejected_at": iso_or_none(v1.updated_at),
+        }
+
+    # ── Legacy path ───────────────────────────────────────────────────────
+    try:
+        legacy_id = int(entry_id)
+    except ValueError:
+        return error(404, "NOT_FOUND", f"Knowledge entry {entry_id} not found")
+    entry = db.query(models.KnowledgeEntry).filter(models.KnowledgeEntry.id == legacy_id).first()
     if not entry:
         return error(404, "NOT_FOUND", f"Knowledge entry {entry_id} not found")
     if entry.status == "rejected":

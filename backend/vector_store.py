@@ -56,3 +56,33 @@ def remove_entry(subject_id: int, entry_id: int):
         coll.delete(ids=[f"entry_{entry_id}"])
     except Exception:
         pass
+
+
+def add_v1_entry(subject_id: int, v1_entry_id: str, sme_id: str, topic: str, content: str):
+    """Index a V1 SME-pipeline knowledge entry into the same Chroma collection
+    we use for legacy entries. The metadata uses `v1_entry_id` (string) instead
+    of the integer `entry_id` so the query layer can tell them apart."""
+    coll = get_collection(subject_id)
+    doc_id = f"v1_entry_{v1_entry_id}"
+    try:
+        coll.delete(ids=[doc_id])
+    except Exception:
+        pass
+    coll.add(
+        ids=[doc_id],
+        documents=[f"{topic}\n\n{content}"],
+        metadatas=[{
+            "v1_entry_id": v1_entry_id,
+            "topic": topic,
+            "sme_id": sme_id,
+            "subject_id": subject_id,
+        }],
+    )
+
+
+def remove_v1_entry(subject_id: int, v1_entry_id: str):
+    coll = get_collection(subject_id)
+    try:
+        coll.delete(ids=[f"v1_entry_{v1_entry_id}"])
+    except Exception:
+        pass

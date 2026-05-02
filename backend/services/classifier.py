@@ -6,9 +6,16 @@ from services.token_tracker import TokenTracker
 
 
 def classify(subjects: list[dict], question: str, tracker: TokenTracker | None = None) -> dict:
-    """subjects: [{id, name, description}]. Returns {subject, confidence, candidates, reasoning}."""
+    """subjects: [{id, name, description}]. Returns {subject, confidence, candidates, reasoning}.
+
+    Format note: we render each subject as `- "<name>" — <description>`. Using
+    quotes around the name and an em-dash (not a colon) prevents the model from
+    treating the description as part of the subject identifier and returning it
+    in the `subject` field.
+    """
     subjects_list = "\n".join(
-        f"- {s['name']}: {s.get('description') or ''}" for s in subjects
+        f'- "{s["name"]}"' + (f" — {s['description']}" if s.get("description") else "")
+        for s in subjects
     ) or "(none)"
     prompt = CLASSIFIER_PROMPT.format(subjects_list=subjects_list, user_question=question)
     raw = complete(prompt, max_tokens=400, temperature=0.0, tier="fast", tracker=tracker)

@@ -47,7 +47,12 @@ def _has_close_competitors(candidates: list[dict], top_confidence: float) -> boo
 
 
 def _approved_entry_count(db: Session) -> int:
-    return db.query(models.KnowledgeEntry).filter(models.KnowledgeEntry.status == "approved").count()
+    """Count approved entries across BOTH the legacy KnowledgeEntry table and
+    the V1 SME-pipeline table. Either is enough to disable the closed-book
+    short-circuit."""
+    legacy = db.query(models.KnowledgeEntry).filter(models.KnowledgeEntry.status == "approved").count()
+    v1 = db.query(models.V1KnowledgeEntry).filter(models.V1KnowledgeEntry.status == "approved").count()
+    return legacy + v1
 
 
 def _sme_for_subject(db: Session, subject: models.Subject) -> models.Profile | None:
@@ -56,19 +61,42 @@ def _sme_for_subject(db: Session, subject: models.Subject) -> models.Profile | N
 
 def _format_sources(chunks: list[dict], db: Session) -> list[dict]:
     """Turn raw retrieval chunks into the {entry_id, sme_name, topic} shape the
-    benchmark expects. We look up sme_name from the contributor profile."""
+    benchmark expects.
+
+    Chunks may come from either the legacy KnowledgeEntry table (metadata has
+    `entry_id`/`title`) or the V1 SME pipeline (metadata has `v1_entry_id`/
+    `topic` and points at V1SMEProfile). Branch on which key is present."""
     if not chunks:
         return []
     out: list[dict] = []
-    seen_ids: set[int] = set()
+    seen: set = set()
     for c in chunks:
         meta = c.get("metadata") or {}
-        entry_id = meta.get("entry_id")
-        if entry_id is None or entry_id in seen_ids:
+        v1_id = meta.get("v1_entry_id")
+        if v1_id:
+            if v1_id in seen:
+                continue
+            seen.add(v1_id)
+            v1 = db.query(models.V1KnowledgeEntry).filter(
+                models.V1KnowledgeEntry.entry_id == v1_id
+            ).first()
+            sme_name: str | None = None
+            topic = (v1.topic if v1 else meta.get("topic"))
+            if v1:
+                sme = db.query(models.V1SMEProfile).filter(
+                    models.V1SMEProfile.sme_id == v1.sme_id
+                ).first()
+                if sme:
+                    sme_name = sme.name
+            out.append({"entry_id": v1_id, "sme_name": sme_name, "topic": topic})
             continue
-        seen_ids.add(entry_id)
+
+        entry_id = meta.get("entry_id")
+        if entry_id is None or entry_id in seen:
+            continue
+        seen.add(entry_id)
         entry = db.query(models.KnowledgeEntry).filter(models.KnowledgeEntry.id == entry_id).first()
-        sme_name: str | None = None
+        sme_name = None
         topic = meta.get("title")
         if entry:
             topic = entry.title or topic
@@ -218,10 +246,19 @@ def query_v1(payload: QueryRequest = Body(...), db: Session = Depends(get_db)):
     matched_name = cls.get("subject")
     matched: models.Subject | None = None
     if matched_name:
+        wanted = str(matched_name).strip().strip('"').lower()
         matched = next(
-            (s for s in subjects if s.name.lower() == str(matched_name).lower()),
+            (s for s in subjects if s.name.lower() == wanted),
             None,
         )
+        if not matched:
+            # Tolerate the model returning "name — description" or "name:
+            # description" by matching any subject whose name is a prefix of
+            # the returned string.
+            matched = next(
+                (s for s in subjects if wanted.startswith(s.name.lower())),
+                None,
+            )
 
     ambiguous = _has_close_competitors(candidates, confidence)
 
