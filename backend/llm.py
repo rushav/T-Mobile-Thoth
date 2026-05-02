@@ -66,6 +66,48 @@ def chat(
     return "".join(parts).strip()
 
 
+def chat_v1(
+    system: str,
+    messages: list[dict],
+    model: str,
+    max_tokens: int = 1024,
+    temperature: float = 0.7,
+) -> tuple[str, dict]:
+    """Like chat() but accepts an explicit model name and returns (text, usage_dict).
+
+    usage_dict keys: prompt_tokens, completion_tokens, total_tokens, model
+    """
+    try:
+        resp = _client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            system=system,
+            messages=messages,
+        )
+    except APIStatusError as e:
+        status = getattr(e, "status_code", 502)
+        raise HTTPException(
+            status_code=502,
+            detail=f"Claude API error ({status}): {e.message if hasattr(e, 'message') else str(e)}",
+        ) from e
+    except APIError as e:
+        raise HTTPException(status_code=502, detail=f"Claude API error: {e}") from e
+
+    parts = []
+    for block in resp.content:
+        if getattr(block, "type", None) == "text":
+            parts.append(block.text)
+    text = "".join(parts).strip()
+    usage = {
+        "prompt_tokens": resp.usage.input_tokens,
+        "completion_tokens": resp.usage.output_tokens,
+        "total_tokens": resp.usage.input_tokens + resp.usage.output_tokens,
+        "model": model,
+    }
+    return text, usage
+
+
 def complete(
     prompt: str,
     max_tokens: int = 1024,

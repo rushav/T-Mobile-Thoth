@@ -6,6 +6,7 @@ from config import ALLOWED_ORIGINS, BENCHMARK_API_KEY
 from database import init_db
 from routes import profiles, subjects, interviews, query, review, admin, files
 from routes.v1 import health as v1_health, query as v1_query, system as v1_system, knowledge as v1_knowledge
+from routes.v1 import smes as v1_smes, interviews as v1_interviews
 
 app = FastAPI(title="Project Thoth", version="0.2.0")
 
@@ -71,3 +72,5 @@ app.include_router(v1_health.router)
 app.include_router(v1_query.router)
 app.include_router(v1_system.router)
 app.include_router(v1_knowledge.router)
+app.include_router(v1_smes.router)
+app.include_router(v1_interviews.router)

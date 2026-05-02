@@ -13,6 +13,14 @@ class TokenTracker:
         self.completion_tokens: int = 0
         self.model: str | None = None
 
+    def add(self, usage: dict) -> None:
+        """Merge a usage dict returned by chat_v1() into the running total."""
+        self.prompt_tokens += usage.get("prompt_tokens", 0)
+        self.completion_tokens += usage.get("completion_tokens", 0)
+        m = usage.get("model")
+        if m:
+            self.model = m
+
     def track(self, response, model: str) -> None:
         usage = getattr(response, "usage", None)
         if usage is None:

@@ -125,3 +125,62 @@ class QueryHistory(Base):
 
     user = relationship("Profile")
     subject = relationship("Subject")
+
+
+# ── V1 Benchmark API models ──────────────────────────────────────────────────
+# Separate tables used exclusively by /api/v1/ SME-pipeline routes.
+# The old Profile/Interview/KnowledgeEntry models above are untouched.
+
+class V1SMEProfile(Base):
+    __tablename__ = "v1_sme_profiles"
+    sme_id = Column(String, primary_key=True)
+    name = Column(String, nullable=False)
+    specialization = Column(String, nullable=False)
+    sub_areas = Column(JSON, nullable=False, default=list)
+    contact_email = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    interviews = relationship("V1Interview", back_populates="sme")
+    materials = relationship("V1Material", back_populates="sme")
+    knowledge_entries = relationship("V1KnowledgeEntry", back_populates="sme")
+
+
+class V1Interview(Base):
+    __tablename__ = "v1_interviews"
+    interview_id = Column(String, primary_key=True)
+    sme_id = Column(String, ForeignKey("v1_sme_profiles.sme_id"), nullable=False)
+    topic = Column(String, nullable=False)
+    status = Column(String, default="in_progress")  # in_progress | completed
+    turns = Column(JSON, default=list)  # [{turn_number, sme_response, agent_follow_up, timestamp}]
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    sme = relationship("V1SMEProfile", back_populates="interviews")
+
+
+class V1Material(Base):
+    __tablename__ = "v1_materials"
+    material_id = Column(String, primary_key=True)
+    sme_id = Column(String, ForeignKey("v1_sme_profiles.sme_id"), nullable=False)
+    title = Column(String, nullable=False)
+    file_type = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    extracted_text = Column(Text, nullable=True)
+    status = Column(String, default="processed")  # processed | failed
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    sme = relationship("V1SMEProfile", back_populates="materials")
+
+
+class V1KnowledgeEntry(Base):
+    __tablename__ = "v1_knowledge_entries"
+    entry_id = Column(String, primary_key=True)
+    sme_id = Column(String, ForeignKey("v1_sme_profiles.sme_id"), nullable=False)
+    topic = Column(String, nullable=False)
+    status = Column(String, default="draft")  # draft | sme_approved | approved | rejected
+    content = Column(Text, nullable=False)
+    sources = Column(JSON, nullable=False, default=dict)  # {"interviews": [...], "materials": [...]}
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+    approved_at = Column(DateTime, nullable=True)
+
+    sme = relationship("V1SMEProfile", back_populates="knowledge_entries")

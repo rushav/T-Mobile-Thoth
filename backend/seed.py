@@ -10,6 +10,7 @@ real-world content instead, we have caught a hallucination — the RAG scoping
 or system prompt constraints need to be tightened.
 """
 import sys
+import uuid as _uuid
 from pathlib import Path
 
 # Make sibling modules importable when run as a script
@@ -222,74 +223,139 @@ Any system operating above 60 BPM, or any failure that does not match one of the
 }
 
 
+def seed_v1(db) -> None:
+    """Seed v1 benchmark tables with fictional SME data."""
+    if db.query(models.V1SMEProfile).count() > 0:
+        print("[seed] v1 tables already have data; skipping v1 seed.")
+        return
+
+    def new_id(prefix: str) -> str:
+        return f"{prefix}_{_uuid.uuid4().hex[:8]}"
+
+    v1_smes_data = [
+        {
+            "name": "Dr. Helga Voss",
+            "specialization": "Zorblatt Crystals",
+            "sub_areas": ["Crystal cultivation", "Voss Scale grading", "Z7 certification"],
+            "contact_email": "zorblatt@test.thoth.dev",
+        },
+        {
+            "name": "Ambassador Rex Tillby",
+            "specialization": "Flumgarten Diplomacy",
+            "sub_areas": ["Tillby Accords trade rules", "Greeting protocols", "Clinkmark exchange"],
+            "contact_email": "flumgarten@test.thoth.dev",
+        },
+        {
+            "name": "Chief Engineer Mona Wrench",
+            "specialization": "Reverse Plumbing",
+            "sub_areas": ["Wrench Paradox", "Contradictory Pipe installation", "RP-4 certification"],
+            "contact_email": "reverse@test.thoth.dev",
+        },
+    ]
+
+    spec_to_subject = {
+        "Zorblatt Crystals": "Zorblatt Crystals",
+        "Flumgarten Diplomacy": "Flumgarten Diplomacy",
+        "Reverse Plumbing": "Reverse Plumbing",
+    }
+
+    for sme_data in v1_smes_data:
+        sme = models.V1SMEProfile(sme_id=new_id("sme"), **sme_data)
+        db.add(sme)
+        db.flush()
+
+        subject_key = spec_to_subject[sme_data["specialization"]]
+        for title, content in KNOWLEDGE.get(subject_key, []):
+            entry = models.V1KnowledgeEntry(
+                entry_id=new_id("ke"),
+                sme_id=sme.sme_id,
+                topic=title,
+                status="approved",
+                content=content,
+                sources={
+                    "interviews": [new_id("int")],
+                    "materials": [new_id("mat")],
+                },
+            )
+            db.add(entry)
+            print(f"[seed] + v1 approved entry: {sme_data['specialization']} / {title}")
+
+        print(f"[seed] + v1 SME: {sme_data['name']} ({sme_data['specialization']})")
+
+    db.commit()
+    print("[seed] v1 seed done.")
+
+
 def main():
     init_db()
     db = SessionLocal()
     try:
         if db.query(models.Profile).count() > 0 or db.query(models.Subject).count() > 0:
-            print("[seed] Database already has data; skipping. Delete data/thoth.db to reseed.")
-            return
+            print("[seed] Old tables already have data; skipping old seed.")
+        else:
+            # Subjects
+            subject_map: dict[str, models.Subject] = {}
+            for name, desc in SUBJECTS:
+                s = models.Subject(name=name, description=desc)
+                db.add(s)
+                db.flush()
+                subject_map[name] = s
+                print(f"[seed] + subject: {name}")
 
-        # Subjects
-        subject_map: dict[str, models.Subject] = {}
-        for name, desc in SUBJECTS:
-            s = models.Subject(name=name, description=desc)
-            db.add(s)
-            db.flush()
-            subject_map[name] = s
-            print(f"[seed] + subject: {name}")
-
-        # SMEs
-        sme_map: dict[str, models.Profile] = {}
-        for name, subject_name, expertise, contact in SMES:
-            p = models.Profile(
-                name=name,
-                role="sme",
-                expertise_area=expertise,
-                contact_info=contact,
-            )
-            p.subjects = [subject_map[subject_name]]
-            db.add(p)
-            db.flush()
-            sme_map[name] = p
-            print(f"[seed] + SME: {name} — {subject_name} ({expertise})")
-
-        # Users
-        for name in USERS:
-            db.add(models.Profile(name=name, role="user"))
-            print(f"[seed] + user: {name}")
-
-        # Admins
-        for name, contact in ADMINS:
-            db.add(models.Profile(name=name, role="admin", contact_info=contact))
-            print(f"[seed] + admin: {name}")
-
-        db.commit()
-
-        # Approved knowledge entries + ChromaDB
-        for subject_name, entries in KNOWLEDGE.items():
-            subject = subject_map[subject_name]
-            contributor = next(
-                (sme for sme_name, s_name, _, _ in SMES if s_name == subject_name for sme in [sme_map[sme_name]]),
-                None,
-            )
-            for title, content in entries:
-                entry = knowledge_svc.create_entry(
-                    db,
-                    subject_id=subject.id,
-                    title=title,
-                    content=content,
-                    contributor_id=contributor.id if contributor else None,
-                    status="approved",
+            # SMEs
+            sme_map: dict[str, models.Profile] = {}
+            for name, subject_name, expertise, contact in SMES:
+                p = models.Profile(
+                    name=name,
+                    role="sme",
+                    expertise_area=expertise,
+                    contact_info=contact,
                 )
-                print(f"[seed] + approved entry: {subject_name} / {title} (id={entry.id})")
+                p.subjects = [subject_map[subject_name]]
+                db.add(p)
+                db.flush()
+                sme_map[name] = p
+                print(f"[seed] + SME: {name} — {subject_name} ({expertise})")
 
-        # Verify ChromaDB
-        for subject_name, subject in subject_map.items():
-            coll = vector_store.get_collection(subject.id)
-            print(f"[seed] chroma collection {coll.name}: {coll.count()} docs")
+            # Users
+            for name in USERS:
+                db.add(models.Profile(name=name, role="user"))
+                print(f"[seed] + user: {name}")
 
-        print("[seed] Done.")
+            # Admins
+            for name, contact in ADMINS:
+                db.add(models.Profile(name=name, role="admin", contact_info=contact))
+                print(f"[seed] + admin: {name}")
+
+            db.commit()
+
+            # Approved knowledge entries + ChromaDB
+            for subject_name, entries in KNOWLEDGE.items():
+                subject = subject_map[subject_name]
+                contributor = next(
+                    (sme for sme_name, s_name, _, _ in SMES if s_name == subject_name for sme in [sme_map[sme_name]]),
+                    None,
+                )
+                for title, content in entries:
+                    entry = knowledge_svc.create_entry(
+                        db,
+                        subject_id=subject.id,
+                        title=title,
+                        content=content,
+                        contributor_id=contributor.id if contributor else None,
+                        status="approved",
+                    )
+                    print(f"[seed] + approved entry: {subject_name} / {title} (id={entry.id})")
+
+            # Verify ChromaDB
+            for subject_name, subject in subject_map.items():
+                coll = vector_store.get_collection(subject.id)
+                print(f"[seed] chroma collection {coll.name}: {coll.count()} docs")
+
+            print("[seed] Done.")
+
+        # V1 seed — independent guard inside seed_v1() itself
+        seed_v1(db)
     finally:
         db.close()
 
