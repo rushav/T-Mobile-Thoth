@@ -95,8 +95,9 @@ frontend/src/api.js            # API endpoint functions
 - [x] SME subject scoping — SMEs only see their own subjects, not others'
 - [x] Subject creation — new subjects immediately available for that SME
 - [x] ChromaDB integration — approved entries added to subject-specific collections
-- [x] Seed script — 3 subjects, 3 SMEs with expertise + contact info, 6 knowledge entries
+- [x] Seed script — 3 subjects, 3 SMEs with expertise + contact info, 6 knowledge entries; v1 seed adds 3 V1SMEProfiles + 6 approved V1KnowledgeEntries
 - [x] Loading spinner during synthesis generation
+- [x] Benchmark /api/v1/ SME-pipeline layer — POST/GET SMEs, start interview, add turn (haiku follow-ups), GET transcript, upload material, synthesize (sonnet), edit entry, SME-approve entry; token usage returned in all LLM-touching responses
 
 ### In progress
 
@@ -144,6 +145,8 @@ Format:
 ```
 
 ### Log
+
+⚠️ [2026-05-01] [backend/models.py, backend/main.py, backend/llm.py, backend/services/token_tracker.py, backend/seed.py, backend/routes/v1/knowledge.py, backend/routes/v1/__init__.py, backend/agents/interviewer_v1.py, backend/routes/v1/smes.py, backend/routes/v1/interviews.py] — Implemented /api/v1/ benchmark SME-pipeline layer. Rushav: models.py had 4 new V1 tables appended (v1_sme_profiles, v1_interviews, v1_materials, v1_knowledge_entries) — additive only, existing tables untouched. main.py has 2 new include_router lines added after existing v1 routers. llm.py has chat_v1() added (new function, existing chat() unchanged). token_tracker.py has add(usage_dict) method added (existing track() unchanged). All 16 /api/v1/ routes now live — new SME pipeline endpoints cover POST/GET SMEs, interviews, materials, synthesize, turn generation, edit entry, and SME approval.
 
 [2026-04-30] [backend/routes/review.py, JOHN_README.md] — Updated the entry-based SME review route so `request_changes` no longer regenerates immediately; it now appends post-review chat messages to the linked interview, sets `post_review_chat`, and returns the conversation continuation state consistently with the interview review flow.
 
